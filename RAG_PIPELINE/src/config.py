@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # API Keys
     GOOGLE_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    
+    # Configuration
+    LLM_PROVIDER: str = "gemini" # Options: "gemini", "groq"
 
     class Config:
         env_file = ".env"

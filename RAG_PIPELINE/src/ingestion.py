@@ -47,7 +47,13 @@ async def generate_summary(text: str) -> str:
     Generate a 2-sentence summary of the document for global context.
     """
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=settings.GOOGLE_API_KEY)
+        # Dynamic LLM Selection
+        if settings.LLM_PROVIDER.lower() == "groq":
+             from langchain_groq import ChatGroq
+             llm = ChatGroq(model="llama3-8b-8192", groq_api_key=settings.GROQ_API_KEY)
+        else:
+             llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=settings.GOOGLE_API_KEY)
+
         # Truncate to first 10k chars to avoid token limits on large docs
         prompt = f"Summarize the following document in 2 sentences to provide global context:\n\n{text[:10000]}"
         response = await llm.ainvoke(prompt)

@@ -14,11 +14,32 @@ class GraphState(TypedDict):
     generation: str
     documents: List[Document]
 
-# --- Initialization ---
-if not settings.GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY is not set.")
+from langchain_groq import ChatGroq
 
-llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=settings.GOOGLE_API_KEY)
+# --- Initialization ---
+def get_llm():
+    """
+    Returns the configured LLM based on settings.LLM_PROVIDER.
+    """
+    provider = settings.LLM_PROVIDER.lower()
+    
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is not set.")
+        # Using Llama 3 8B optimized for Groq
+        return ChatGroq(model="llama3-8b-8192", groq_api_key=settings.GROQ_API_KEY)
+    
+    else: # Default to Gemini
+        if not settings.GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY is not set.")
+        # Using gemini-flash-latest as verified from list_models()
+        return ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=settings.GOOGLE_API_KEY)
+
+llm = get_llm()
+
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+# ... (get_llm is above) ...
 
 # Tool: Tavily Search
 web_search_tool = None
@@ -34,8 +55,20 @@ def retrieve(state: GraphState):
     print("---RETRIEVE---")
     question = state["question"]
     vectorstore = get_vectorstore()
-    retriever = vectorstore.as_retriever()
-    documents = retriever.invoke(question)
+    
+    results = vectorstore.similarity_search_with_relevance_scores(question, k=4)
+    
+    # Filter by Threshold
+    THRESHOLD = 0.45
+    documents = []
+    
+    for doc, score in results:
+        print(f"Doc Score: {score}")
+        if score >= THRESHOLD:
+            documents.append(doc)
+        else:
+            print(f"Skipping low relevance doc (Score: {score})")
+            
     return {"documents": documents, "question": question}
 
 def grade_documents(state: GraphState):
@@ -65,9 +98,6 @@ def grade_documents(state: GraphState):
             filtered_docs.append(doc)
             has_relevant = True
     
-    # If we found relevant docs, keep them. 
-    # If NO relevant docs found, we explicitly set documents to empty list 
-    # so decide_to_generate routes to web_search.
     if not has_relevant:
         print("---NO RELEVANT DOCS FOUND -> WILL SEARCH---")
         return {"documents": [], "question": question}
@@ -87,7 +117,8 @@ def web_search(state: GraphState):
             docs = web_search_tool.invoke({"query": question})
             # Tavily returns a list of dictionaries, we convert to Documents
             web_results = "\n".join([d["content"] for d in docs])
-            web_doc = Document(page_content=web_results, metadata={"source": "Start page search"})
+            print(f"---WEB RESULTS SAMPLE---\n{web_results[:500]}\n------------------------")
+            web_doc = Document(page_content=web_results, metadata={"source": "Tavily Search"})
             documents.append(web_doc)
         except Exception as e:
             print(f"Web search error: {e}")
@@ -121,7 +152,8 @@ def generate(state: GraphState):
     - If the context contains the answer, provide it clearly.
     - If the context comes from a "Global Summary" of a PDF, mention that.
     - If the context comes from "Web search", mention that you fetched this information online.
-    - If the answer is not in the context, state: "I do not have enough information to answer this question."
+    - If the question asks for advice (e.g., "Should X do Y?"), use the general definitions/rules in the context to provide a qualified recommendation, even if the specific person is not mentioned in the context.
+    - Only answer "I do not have enough information" if the context is completely irrelevant.
     """
     
     prompt = ChatPromptTemplate.from_template(template)
