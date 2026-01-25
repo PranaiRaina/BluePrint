@@ -105,5 +105,35 @@ export const agentService = {
             console.error("Fetch Documents Error:", error);
             return [];
         }
+    },
+
+    /**
+     * Get real-time stock data for charting.
+     * @param ticker Stock ticker symbol (e.g., "NVDA").
+     * @param session Supabase session for authentication token.
+     */
+    getStockData: async (ticker: string, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/stock/${ticker.toUpperCase()}`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Stock API Error: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Stock API Error:", error);
+            throw error;
+        }
     }
 };

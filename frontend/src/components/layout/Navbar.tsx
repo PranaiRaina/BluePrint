@@ -1,17 +1,35 @@
-import React from 'react';
-import { Home, Database, Code } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
+import { Home, Database, TrendingUp, LogOut, ChevronDown, User } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 
 interface NavbarProps {
-    activeTab: 'overview' | 'market' | 'vault' | 'chat';
-    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat') => void;
+    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks';
+    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => void;
+    session: Session | null;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
+const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => {
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+    // Reordered: Vault (left), Home (middle), Stock Analytics (right)
     const tabs = [
-        { id: 'overview', label: 'Home', icon: Home },
         { id: 'vault', label: 'Vault', icon: Database },
+        { id: 'overview', label: 'Home', icon: Home },
+        { id: 'stocks', label: 'Stock Analytics', icon: TrendingUp },
     ];
+
+    const handleSignOut = async () => {
+        await supabase.auth.signOut();
+    };
+
+    // Get user initials from email
+    const getUserInitials = () => {
+        if (!session?.user?.email) return 'U';
+        const email = session.user.email;
+        return email.substring(0, 2).toUpperCase();
+    };
 
     return (
         <motion.nav
@@ -21,10 +39,8 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         >
             {/* Logo Area */}
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-ai flex items-center justify-center shadow-lg shadow-primary/20">
-                    <Code className="text-white w-5 h-5" />
-                </div>
-                <span className="font-serif font-bold text-xl text-white tracking-wide">Bloom</span>
+                <img src="/logo.png" alt="BluePrint" className="w-8 h-8 rounded-lg" />
+                <span className="font-serif font-bold text-xl text-white tracking-wide">BluePrint</span>
             </div>
 
             {/* Navigation Tabs */}
@@ -56,18 +72,52 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 })}
             </div>
 
-            {/* Status / Connect */}
-            <div className="flex items-center gap-3">
-                <div className="hidden md:flex flex-col items-end">
-                    <span className="text-[10px] text-text-secondary uppercase tracking-wider font-bold">System Status</span>
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-mono text-emerald-400">Online</span>
+            {/* User Menu with Sign Out */}
+            <div className="relative">
+                <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-3 hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
+                >
+                    <div className="hidden md:flex flex-col items-end">
+                        <span className="text-xs text-text-secondary truncate max-w-[150px]">
+                            {session?.user?.email || 'User'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-xs font-mono text-emerald-400">Online</span>
+                        </div>
                     </div>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center">
-                    <span className="font-serif text-white text-xs">JD</span>
-                </div>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-ai flex items-center justify-center">
+                        <span className="font-serif text-white text-xs">{getUserInitials()}</span>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-text-secondary transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                    {userMenuOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute top-full right-0 mt-2 w-48 glass-card border border-white/10 rounded-xl overflow-hidden z-50"
+                        >
+                            <div className="p-3 border-b border-white/10">
+                                <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4 text-text-secondary" />
+                                    <span className="text-sm text-white truncate">{session?.user?.email || 'User'}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleSignOut}
+                                className="w-full px-3 py-3 text-left hover:bg-red-500/10 transition-colors flex items-center gap-2 text-red-400"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                <span className="text-sm">Sign Out</span>
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </motion.nav>
     );

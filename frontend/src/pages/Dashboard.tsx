@@ -3,11 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Brain, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-
-
 import Navbar from '../components/layout/Navbar';
 import UploadZone from '../components/views/UploadZone';
 import ChatView from '../components/views/ChatView';
+import StockAnalyticsView from '../components/views/StockAnalyticsView';
 import Typewriter from '../components/ui/Typewriter';
 
 import type { Session } from '@supabase/supabase-js';
@@ -18,12 +17,75 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks'>('overview');
 
     const [query, setQuery] = useState('');
     const [isLifted, setIsLifted] = useState(false);
     const [loadingStage, setLoadingStage] = useState(0); // 0: Idle, 1: Reading, 2: Computing, 3: Done
     const [mockInsight, setMockInsight] = useState<{ hard: { score: string, yield: string, conf: string }, soft: { source: string, quote: string, strategy: string } } | null>(null);
+    const [extractedTickers, setExtractedTickers] = useState<string[]>([]);
+
+    // Company name to ticker mapping for common stocks
+    const COMPANY_TO_TICKER: Record<string, string> = {
+        // Tech Giants
+        'apple': 'AAPL', 'microsoft': 'MSFT', 'google': 'GOOGL', 'alphabet': 'GOOGL',
+        'amazon': 'AMZN', 'meta': 'META', 'facebook': 'META', 'nvidia': 'NVDA',
+        'tesla': 'TSLA', 'netflix': 'NFLX', 'adobe': 'ADBE', 'salesforce': 'CRM',
+        'oracle': 'ORCL', 'intel': 'INTC', 'amd': 'AMD', 'ibm': 'IBM',
+        'cisco': 'CSCO', 'qualcomm': 'QCOM', 'broadcom': 'AVGO',
+        // AI & Cloud
+        'palantir': 'PLTR', 'snowflake': 'SNOW', 'datadog': 'DDOG', 'crowdstrike': 'CRWD',
+        'servicenow': 'NOW', 'splunk': 'SPLK', 'twilio': 'TWLO', 'okta': 'OKTA',
+        'cloudflare': 'NET', 'mongodb': 'MDB', 'elastic': 'ESTC',
+        // Finance
+        'jpmorgan': 'JPM', 'goldman': 'GS', 'morgan stanley': 'MS', 'visa': 'V',
+        'mastercard': 'MA', 'paypal': 'PYPL', 'square': 'SQ', 'block': 'SQ',
+        'coinbase': 'COIN', 'robinhood': 'HOOD',
+        // Retail & Consumer
+        'walmart': 'WMT', 'costco': 'COST', 'target': 'TGT', 'nike': 'NKE',
+        'starbucks': 'SBUX', 'mcdonalds': 'MCD', 'disney': 'DIS', 'coca-cola': 'KO',
+        'pepsi': 'PEP', 'pepsico': 'PEP',
+        // Healthcare
+        'johnson': 'JNJ', 'pfizer': 'PFE', 'moderna': 'MRNA', 'unitedhealth': 'UNH',
+        // Automotive
+        'ford': 'F', 'gm': 'GM', 'general motors': 'GM', 'rivian': 'RIVN', 'lucid': 'LCID',
+        // Energy
+        'exxon': 'XOM', 'chevron': 'CVX', 'shell': 'SHEL',
+        // Other
+        'uber': 'UBER', 'lyft': 'LYFT', 'airbnb': 'ABNB', 'doordash': 'DASH',
+        'zoom': 'ZM', 'spotify': 'SPOT', 'snap': 'SNAP', 'snapchat': 'SNAP',
+        'twitter': 'TWTR', 'pinterest': 'PINS', 'roblox': 'RBLX',
+        'draftkings': 'DKNG', 'peloton': 'PTON', 'shopify': 'SHOP', 'etsy': 'ETSY',
+        'c3': 'AI', 'c3.ai': 'AI', 'soundhound': 'SOUN',
+    };
+
+    // Helper to extract stock tickers from text
+    const extractTickers = (text: string): string[] => {
+        const lowerText = text.toLowerCase();
+        const foundTickers: string[] = [];
+
+        // 1. Check for company names in the text
+        for (const [companyName, ticker] of Object.entries(COMPANY_TO_TICKER)) {
+            if (lowerText.includes(companyName)) {
+                foundTickers.push(ticker);
+            }
+        }
+
+        // 2. Also check for direct ticker mentions (e.g., $NVDA or NVDA)
+        const tickerRegex = /\$?([A-Z]{2,5})\b/g;
+        const upperText = text.toUpperCase();
+        let match;
+        while ((match = tickerRegex.exec(upperText)) !== null) {
+            const ticker = match[1];
+            // Only add if it's a known ticker (exists as a value in our mapping)
+            const knownTickers = Object.values(COMPANY_TO_TICKER);
+            if (knownTickers.includes(ticker) && !foundTickers.includes(ticker)) {
+                foundTickers.push(ticker);
+            }
+        }
+
+        return [...new Set(foundTickers)]; // Deduplicate
+    };
 
 
 
@@ -56,6 +118,11 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 }
             });
 
+            // Extract stock tickers from user's query ONLY (not from agent response)
+            // Always update - if no tickers found, reset to empty so Stock Analytics shows empty state
+            const tickersFromQuery = extractTickers(query);
+            setExtractedTickers(tickersFromQuery);
+
             setLoadingStage(3);
         } catch (error) {
             console.error(error);
@@ -75,7 +142,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             <div className="fixed top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none z-0" />
 
             {/* --- Navigation --- */}
-            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} session={session} />
 
             <div className="pt-16 relative z-10 flex flex-col items-center">
 
@@ -176,18 +243,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                             </ReactMarkdown>
                                         </div>
 
-                                        <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between">
-                                            <div className="flex items-center gap-4">
-                                                <button className="text-xs text-text-secondary hover:text-white flex items-center gap-2 transition-colors">
-                                                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Wolfram_Language_Logo.svg/1200px-Wolfram_Language_Logo.svg.png" className="w-4 h-4 opacity-50 grayscale group-hover:grayscale-0 transition-all" alt="Wolfram" />
-                                                    Wolfram Alpha
-                                                </button>
-                                                <span className="text-white/20">|</span>
-                                                <span className="text-xs text-text-secondary flex items-center gap-1">
-                                                    <Zap className="w-3 h-3 text-ai" />
-                                                    Gemini 2.5 Flash
-                                                </span>
-                                            </div>
+                                        <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-end">
                                             <span className="text-xs font-mono text-primary">✓ Complete</span>
                                         </div>
                                     </div>
@@ -203,6 +259,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     {/* Market Tab Removed */}
                     {activeTab === 'vault' && <UploadZone session={session} />}
                     {activeTab === 'chat' && <ChatView session={session} />}
+                    {activeTab === 'stocks' && <StockAnalyticsView session={session} tickers={extractedTickers} />}
                 </div>
 
             </div>

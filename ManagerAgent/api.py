@@ -233,6 +233,49 @@ async def list_documents(user: dict = Depends(get_current_user)):
         print(f"Error listing documents: {e}")
         return {"documents": []}
 
+@app.get("/v1/agent/stock/{ticker}")
+async def get_stock_data(ticker: str, user: dict = Depends(get_current_user)):
+    """
+    Get real-time stock quote and price history for a ticker.
+    Returns data formatted for frontend charting.
+    """
+    try:
+        # Import FinnhubClient
+        from StockAgents.backend.services.finnhub_client import finnhub_client
+        
+        # Fetch quote and candles in parallel
+        quote = await finnhub_client.get_quote(ticker.upper())
+        candles = await finnhub_client.get_candles(ticker.upper())
+        
+        # Format candles for recharts
+        chart_data = []
+        if candles.get("s") == "ok" and candles.get("c") and candles.get("t"):
+            for i, (price, timestamp) in enumerate(zip(candles["c"], candles["t"])):
+                # Convert timestamp to readable time
+                from datetime import datetime
+                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M")
+                chart_data.append({
+                    "time": time_str,
+                    "value": round(price, 2)
+                })
+        
+        return {
+            "ticker": ticker.upper(),
+            "currentPrice": quote.get("c", 0),
+            "change": quote.get("d", 0),
+            "changePercent": quote.get("dp", 0),
+            "high": quote.get("h", 0),
+            "low": quote.get("l", 0),
+            "open": quote.get("o", 0),
+            "previousClose": quote.get("pc", 0),
+            "candles": chart_data
+        }
+    except Exception as e:
+        print(f"Error fetching stock data for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

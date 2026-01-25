@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard';
 import AuraBackground from './components/visuals/AuraBackground';
 
 // DEV MODE FLAG - set to false for production
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
