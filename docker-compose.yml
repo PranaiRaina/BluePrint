@@ -24,6 +24,7 @@ services:
       - WOLFRAM_APP_ID=${WOLFRAM_APP_ID}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - REDIS_HOST=redis
@@ -80,6 +81,7 @@ services:
 volumes:
   chroma_data:
   timescaledb_data:
+
 
 networks:
   rosehack_network:

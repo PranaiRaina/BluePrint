@@ -19,3 +19,14 @@ spacy
 langgraph
 tavily-python
 langchain-groq
+scikit-learn
+pandas
+numpy
+yfinance
+sqlalchemy
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+cvxpy
+finnhub-python
+langchain-tavily
