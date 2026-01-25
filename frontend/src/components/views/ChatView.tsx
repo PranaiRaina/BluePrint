@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { agentService } from '../../services/agent';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
@@ -16,6 +16,18 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    useEffect(() => {
+        const loadHistory = async () => {
+            if (session?.user?.id) {
+                const history = await agentService.getHistory(session.user.id, session);
+                if (history && history.length > 0) {
+                    setMessages(history);
+                }
+            }
+        };
+        loadHistory();
+    }, [session]);
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || isLoading) return;
@@ -27,8 +39,8 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
         setIsLoading(true);
 
         try {
-            // Real API Call
-            const response = await agentService.calculate(userQuery, session);
+            // Real API Call using persistent session ID
+            const response = await agentService.calculate(userQuery, session, session.user.id);
 
             setMessages(prev => [...prev, {
                 role: 'ai',

@@ -88,6 +88,30 @@ def get_chat_history(session_id: str, limit: int = 10) -> str:
     formatted_history = "\n".join([f"{role}: {content}" for role, content in history])
     return formatted_history
 
+def get_chat_history_json(session_id: str, limit: int = 50) -> List[dict]:
+    """Retrieve recent chat history for a session formatted as JSON list."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT role, content FROM chat_history 
+        WHERE session_id = ? 
+        ORDER BY timestamp DESC 
+        LIMIT ?
+    """, (session_id, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Reverse to chronological order (Oldest -> Newest)
+    history = rows[::-1]
+    
+    # Map backend roles to frontend roles
+    formatted_history = []
+    for role, content in history:
+        frontend_role = "user" if role == "User" else "ai"
+        formatted_history.append({"role": frontend_role, "content": content})
+        
+    return formatted_history
+
 def save_chat_entry(session_id: str, role: str, content: str):
     """Save a single chat entry."""
     conn = sqlite3.connect(DB_PATH)
@@ -232,7 +256,14 @@ async def list_documents(user: dict = Depends(get_current_user)):
     except Exception as e:
         print(f"Error listing documents: {e}")
         return {"documents": []}
+        return {"documents": []}
 
+@app.get("/v1/agent/history")
+async def get_history(session_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get chat history for a specific session.
+    """
+    return get_chat_history_json(session_id)
 @app.get("/v1/agent/stock/{ticker}")
 async def get_stock_data(ticker: str, user: dict = Depends(get_current_user)):
     """

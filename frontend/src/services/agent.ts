@@ -135,5 +135,33 @@ export const agentService = {
             console.error("Stock API Error:", error);
             throw error;
         }
+    },
+
+    /**
+     * Get chat history for the current session.
+     */
+    getHistory: async (sessionId: string, session: Session | null): Promise<any[]> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/history?session_id=${sessionId}`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) {
+                return [];
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Fetch History Error:", error);
+            return [];
+        }
     }
 };
+

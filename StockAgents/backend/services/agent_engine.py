@@ -319,10 +319,14 @@ CRITICAL: You MUST use specific numbers and evidence.
 {json.dumps(analysis.get('optimization', {}), indent=2, default=str)}
 
 INSTRUCTIONS:
-1. **Data Comparison Table**: Create a Markdown table comparing Price, Analyst Score, P/E Ratio, and Wall Street Signal (Buy/Sell counts) for each stock.
+1. **Comparison Summary**: Create a detailed bulleted list comparing Price, Analyst Score, P/E Ratio, and Wall Street Signal (Buy/Sell counts) for each stock.
 2. **Deep Dive**: For each stock, provide specific evidence (e.g., "Apple has 35 Buy ratings...", "Meta's P/E is...").
 3. **Wall Street Consensus**: Explicitly state what Finnhub data says about analyst opinions.
 4. **Recommendation**: Conclude with a clear, data-backed verdict.
+
+**FORMATTING RULE**: OUTPUT AS PLAIN TEXT LISTS.
+**ABSOLUTELY NO MARKDOWN TABLES**.
+**ABSOLUTELY NO PIPES (|) or TABLE ROWS**.
 """
 
         # Execute Synthesis if we have a prompt

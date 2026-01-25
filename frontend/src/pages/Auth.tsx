@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const Auth: React.FC = () => {
