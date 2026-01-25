@@ -43,11 +43,62 @@ def check_rate_limit(client_ip: str):
     
     RATE_LIMIT_STORE[client_ip].append(now)
 
+import sqlite3
+import json
+
+# --- Database Setup ---
+DB_PATH = "chat_history.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Initialize DB immediately
+init_db()
+
+def get_chat_history(session_id: str, limit: int = 10) -> str:
+    """Retrieve recent chat history for a session formatted as text."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT role, content FROM chat_history 
+        WHERE session_id = ? 
+        ORDER BY timestamp DESC 
+        LIMIT ?
+    """, (session_id, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Reverse to chronological order
+    history = rows[::-1]
+    formatted_history = "\n".join([f"{role}: {content}" for role, content in history])
+    return formatted_history
+
+def save_chat_entry(session_id: str, role: str, content: str):
+    """Save a single chat entry."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)", 
+                   (session_id, role, content))
+    conn.commit()
+    conn.close()
+
 # --- Data Models ---
 
 class AgentRequest(BaseModel):
     query: str
-    session_id: Optional[str] = None
+    session_id: Optional[str] = "default"  # Default session if none provided
     
 class AgentResponse(BaseModel):
     final_output: str
@@ -72,12 +123,26 @@ async def calculate(request: Request, body: AgentRequest):
         raise HTTPException(status_code=400, detail="Query too long (max 1000 chars)")
 
     try:
-        # 3. Execution with Timeout (30s)
+        # 3. Retrieve History
+        history = get_chat_history(body.session_id)
+        
+        # 4. Construct Contextual Query
+        # We assume the Agent isn't natively stateful here, so we inject history.
+        if history:
+            full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+        else:
+            full_query = body.query
+
+        # 5. Execution with Timeout (30s)
         # Prevent runaway agent loops
         result = await asyncio.wait_for(
-            Runner.run(manager_agent, body.query),
+            Runner.run(manager_agent, full_query),
             timeout=30.0
         )
+        
+        # 6. Save Interaction to History
+        save_chat_entry(body.session_id, "User", body.query)
+        save_chat_entry(body.session_id, "Agent", result.final_output)
         
         return AgentResponse(
             final_output=result.final_output,
