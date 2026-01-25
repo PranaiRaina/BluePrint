@@ -1,10 +1,10 @@
 import os
 import hashlib
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from src.config import settings
+from .config import settings
 import chromadb
 
 # PII Redaction
@@ -12,8 +12,47 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 
 # Initialize Presidio
-analyzer = AnalyzerEngine()
-anonymizer = AnonymizerEngine()
+# Initialize Presidio (Lazy Loaded)
+_analyzer = None
+_anonymizer = None
+
+def get_analyzer():
+    global _analyzer
+    if _analyzer is None:
+        try:
+            _analyzer = AnalyzerEngine()
+        except OSError:
+            # Fallback if model not present: download it
+            from spacy.cli import download
+            download("en_core_web_sm")
+            # Create configuration to force 'en_core_web_sm'
+            from presidio_analyzer.nlp_engine import SpacyNlpEngine
+            nlp_engine = SpacyNlpEngine(models=[{"lang_code": "en", "model_name": "en_core_web_sm"}])
+            _analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+    return _analyzer
+
+def get_anonymizer():
+    global _anonymizer
+    if _anonymizer is None:
+        _anonymizer = AnonymizerEngine()
+    return _anonymizer
+
+def remove_pii(text: str) -> str:
+    """
+    Redact sensitive PII from text using Microsoft Presidio.
+    """
+    try:
+        analyzer = get_analyzer()
+        anonymizer = get_anonymizer()
+        
+        # Analyze
+        results = analyzer.analyze(text=text, entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "US_SSN", "CREDIT_CARD"], language='en')
+        # Anonymize
+        anonymized_result = anonymizer.anonymize(text=text, analyzer_results=results)
+        return anonymized_result.text
+    except Exception as e:
+        print(f"PII Redaction Warning: {e}")
+        return text
 
 # Initialize Chroma
 # We use the PersistentClient to run locally without Docker
@@ -27,20 +66,6 @@ def get_vectorstore():
         collection_name="rag_documents",
         embedding_function=embeddings
     )
-
-def remove_pii(text: str) -> str:
-    """
-    Redact sensitive PII from text using Microsoft Presidio.
-    """
-    try:
-        # Analyze
-        results = analyzer.analyze(text=text, entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "US_SSN", "CREDIT_CARD"], language='en')
-        # Anonymize
-        anonymized_result = anonymizer.anonymize(text=text, analyzer_results=results)
-        return anonymized_result.text
-    except Exception as e:
-        print(f"PII Redaction Warning: {e}")
-        return text
 
 async def generate_summary(text: str) -> str:
     """

@@ -1,7 +1,7 @@
 """Wolfram Alpha LLM API integration."""
 
 import httpx
-from CalcAgent.config import WOLFRAM_APP_ID, WOLFRAM_API_URL
+from CalcAgent.config.config import WOLFRAM_APP_ID, WOLFRAM_API_URL
 
 
 async def query_wolfram(query: str) -> str:

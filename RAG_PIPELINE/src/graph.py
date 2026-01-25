@@ -5,8 +5,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.documents import Document
-from src.ingestion import get_vectorstore
-from src.config import settings
+from .ingestion import get_vectorstore
+from .config import settings
 
 # --- State Definition ---
 class GraphState(TypedDict):
