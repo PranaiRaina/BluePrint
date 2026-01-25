@@ -1,5 +1,6 @@
 """SubAgents for financial calculations - each has Wolfram as their tool."""
 
+from datetime import datetime
 from agents import Agent, function_tool
 from CalcAgent.config import MODEL
 from CalcAgent.tools.wolfram import query_wolfram
@@ -11,8 +12,16 @@ from CalcAgent.prompts.prompts import (
     BUDGET_AGENT_PROMPT,
 )
 
-# Shared Wolfram tool for all subagents
 wolfram_tool = function_tool(query_wolfram)
+
+now = datetime.now()
+current_date = now.strftime("%Y-%m-%d")
+current_year = now.year
+
+tax_instructions = TAX_AGENT_PROMPT.format(
+    current_date=current_date,
+    current_year=current_year
+)
 
 
 # =============================================================================
@@ -23,7 +32,7 @@ tvm_agent = Agent(
     instructions=TVM_AGENT_PROMPT,
     tools=[wolfram_tool],
     model=MODEL,
-    output_type=CalculationResult,  # Enforces structured response
+    output_type=CalculationResult,
 )
 
 investment_agent = Agent(
@@ -36,7 +45,7 @@ investment_agent = Agent(
 
 tax_agent = Agent(
     name="TaxAgent",
-    instructions=TAX_AGENT_PROMPT,
+    instructions=tax_instructions,
     tools=[wolfram_tool],
     model=MODEL,
     output_type=CalculationResult,

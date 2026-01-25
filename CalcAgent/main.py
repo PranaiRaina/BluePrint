@@ -1,8 +1,8 @@
 """CLI entry point for the Financial Calculation Agent."""
 
 import asyncio
-from agents import Runner
 from CalcAgent.agent import orchestrator
+from CalcAgent.utils import run_with_retry
 
 
 async def main():
@@ -17,7 +17,7 @@ async def main():
     print("  • Federal tax estimates")
     print("  • Savings projections")
     print()
-    print("Type 'quit' or 'exit' to stop.")
+    print("Type 'quit', 'exit', or 'bye' to stop.")
     print("=" * 60)
     print()
     
@@ -28,13 +28,15 @@ async def main():
             if not query:
                 continue
                 
-            if query.lower() in ("quit", "exit", "q"):
+            # Handle exit commands locally so we don't send "bye" to the agent
+            if query.lower() in ("quit", "exit", "q", "bye"):
                 print("Goodbye!")
                 break
             
             print("\nCalculating...\n")
             
-            result = await Runner.run(orchestrator, query)
+            # Use retry logic to handle intermittent tool parsing errors
+            result = await run_with_retry(orchestrator, query, max_retries=3)
             print(f"Agent: {result.final_output}\n")
             
         except KeyboardInterrupt:
