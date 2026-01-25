@@ -1,12 +1,24 @@
 version: '3.8'
 
 services:
-  # 1. The Financial Agent API + RAG Pipeline
+  # 1. Frontend (BluePrint UI)
+  frontend:
+    build: ./frontend
+    container_name: rosehack_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - calc-agent
+    networks:
+      - rosehack_network
+
+  # 2. Backend API (Manager Agent)
   calc-agent:
     build: .
+    container_name: rosehack_backend
     ports:
       - "8001:8001" # Agent API
-      - "8080:8080" # RAG Pipeline (if running separately inside same container)
+      - "8080:8080" # RAG Pipeline (optional)
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - WOLFRAM_APP_ID=${WOLFRAM_APP_ID}
@@ -14,19 +26,61 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
     depends_on:
       - chroma
+      - redis
+      - timescaledb
     command: uvicorn ManagerAgent.api:app --host 0.0.0.0 --port 8001
+    networks:
+      - rosehack_network
 
-  # 2. ChromaDB (Vector Database)
+  # 3. ChromaDB (Vector Database)
   chroma:
     image: chromadb/chroma:latest
+    container_name: rosehack_chroma
     ports:
       - "8000:8000"
     volumes:
       - chroma_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
+    networks:
+      - rosehack_network
+
+  # 4. TimescaleDB (Stock Data)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: rosehack_timescaledb
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=stock_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    networks:
+      - rosehack_network
+
+  # 5. Redis (Caching)
+  redis:
+    image: redis:alpine
+    container_name: rosehack_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - rosehack_network
 
 volumes:
   chroma_data:
+  timescaledb_data:
+
+networks:
+  rosehack_network:
+    driver: bridge

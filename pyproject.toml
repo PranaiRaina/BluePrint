@@ -25,6 +25,7 @@ dependencies = [
     "spacy",
     "langgraph",
     "tavily-python",
+    "langchain-tavily",
     "langchain-groq",
     "pyjwt",
     "scikit-learn>=1.8.0",

@@ -1,7 +1,3 @@
-
-Folder highlights
-Infrastructure setup defines services for TimescaleDB and Redis using Docker Compose with a shared bridge network.
-
 version: '3.8'
 
 services:
