@@ -2,8 +2,8 @@
 
 import unittest
 import asyncio
-from CalcAgent.agent import orchestrator
-from CalcAgent.utils import run_with_retry
+from CalcAgent.agent import financial_agent
+from CalcAgent.config.utils import run_with_retry
 
 # Define test cases (Query, Expected Keywords/Values)
 TEST_CASES = [
@@ -69,7 +69,7 @@ class TestCalcAgent(unittest.TestCase):
             try:
                 # Use retry logic for robustness
                 response = loop.run_until_complete(
-                    run_with_retry(orchestrator, case['query'], max_retries=3)
+                    run_with_retry(financial_agent, case['query'], max_retries=3)
                 )
                 output = response.final_output
                 

@@ -10,6 +10,11 @@ import json
 # Initialize TestClient
 client = TestClient(app)
 
+# Override auth dependency
+from Auth.dependencies import get_current_user
+app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email": "test@example.com"}
+
+
 # =============================================================================
 # 1. API Integration Tests (Validation, Rate Limits, Health)
 # =============================================================================
@@ -101,7 +106,9 @@ def test_api_success_flow(mock_run):
     mock_result.final_output = "Mortgage payment is $1,200."
     mock_run.return_value = mock_result
     
-    response = client.post("/v1/agent/calculate", json={"query": "Calculate mortgage"})
+    # Mock history to prevent previous tests from polluting this one
+    with patch("ManagerAgent.api.get_chat_history", return_value=""):
+        response = client.post("/v1/agent/calculate", json={"query": "Calculate mortgage"})
     
     assert response.status_code == 200
     data = response.json()

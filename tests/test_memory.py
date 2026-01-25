@@ -7,6 +7,11 @@ import sqlite3
 
 client = TestClient(app)
 
+# Override auth dependency
+from Auth.dependencies import get_current_user
+app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email": "test@example.com"}
+
+
 # Ensure fresh DB for tests
 @pytest.fixture(autouse=True)
 def setup_db():

@@ -1,8 +1,8 @@
 """CLI entry point for the Financial Calculation Agent."""
 
 import asyncio
-from CalcAgent.agent import orchestrator
-from CalcAgent.utils import run_with_retry
+from CalcAgent.agent import financial_agent
+from CalcAgent.config.utils import run_with_retry
 
 
 async def main():
@@ -36,7 +36,7 @@ async def main():
             print("\nCalculating...\n")
             
             # Use retry logic to handle intermittent tool parsing errors
-            result = await run_with_retry(orchestrator, query, max_retries=3)
+            result = await run_with_retry(financial_agent, query, max_retries=3)
             print(f"Agent: {result.final_output}\n")
             
         except KeyboardInterrupt:

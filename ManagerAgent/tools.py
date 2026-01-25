@@ -24,3 +24,28 @@ async def perform_rag_search(query: str) -> str:
         return answer
     except Exception as e:
         return f"Error performing RAG search: {str(e)}"
+
+
+async def ask_stock_analyst(query: str) -> str:
+    """
+    Delegate a stock analysis question to the Stock Analysis Multi-Agent System.
+    Use this for any question about stock prices, market trends, portfolio optimization,
+    or investment recommendations for specific tickers (e.g., AAPL, TSLA, NVDA).
+    
+    Args:
+        query: The user's question about stocks or market analysis.
+        
+    Returns:
+        A comprehensive analysis and recommendation from the stock analysis team.
+    """
+    try:
+        from StockAgents.backend.services.agent_engine import agent_engine
+        
+        # Run the multi-agent workflow
+        result = await agent_engine.run_workflow(query, user_context={})
+        
+        # Return the synthesized recommendation
+        return result.get("recommendation", "Stock analysis completed, but no recommendation was generated.")
+    except Exception as e:
+        return f"Error performing stock analysis: {str(e)}"
+

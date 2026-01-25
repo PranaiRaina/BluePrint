@@ -56,13 +56,13 @@ async def test_wolfram_api():
 async def test_agent(query_name: str, query: str):
     """Test a single query through the agent."""
     from agents import Runner
-    from CalcAgent.agent import orchestrator
+    from CalcAgent.agent import financial_agent
     
     print(f"\n--- Test: {query_name} ---")
     print(f"Query: {query[:80]}{'...' if len(query) > 80 else ''}")
     
     try:
-        result = await Runner.run(orchestrator, query)
+        result = await Runner.run(financial_agent, query)
         print(f"Response:\n{result.final_output[:500]}{'...' if len(result.final_output) > 500 else ''}")
         return True
     except Exception as e:
