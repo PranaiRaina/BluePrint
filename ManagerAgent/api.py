@@ -133,26 +133,39 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         # 3. Retrieve History
         history = get_chat_history(body.session_id)
         
-        # 4. Construct Contextual Query
-        # We assume the Agent isn't natively stateful here, so we inject history.
-        if history:
-            full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+        # --- HARD BYPASS FOR STOCK QUERIES ---
+        # User requested absolutely NO manager interference for stock data.
+        # We detect intent manually and call the tool directly.
+        lower_query = body.query.lower()
+        stock_keywords = ["stock", "price", "buy", "sell", "compare", "analyze", "market", "nvda", "aapl", "tsla", "amd", "meta", "googl", "amzn", "msft"]
+        
+        if any(kw in lower_query for kw in stock_keywords) and len(lower_query.split()) < 20:
+             print(f"Bypassing Manager Agent for stock query: {body.query}")
+             from ManagerAgent.tools import ask_stock_analyst
+             # Call tool directly
+             final_output = await ask_stock_analyst(body.query)
         else:
-            full_query = body.query
+            # 4. Construct Contextual Query
+            # We assume the Agent isn't natively stateful here, so we inject history.
+            if history:
+                full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+            else:
+                full_query = body.query
 
-        # 5. Execution with Timeout (30s)
-        # Prevent runaway agent loops
-        result = await asyncio.wait_for(
-            Runner.run(manager_agent, full_query),
-            timeout=30.0
-        )
+            # 5. Execution with Timeout (30s)
+            # Prevent runaway agent loops
+            result = await asyncio.wait_for(
+                Runner.run(manager_agent, full_query),
+                timeout=30.0
+            )
+            final_output = result.final_output
         
         # 6. Save Interaction to History
         save_chat_entry(body.session_id, "User", body.query)
-        save_chat_entry(body.session_id, "Agent", result.final_output)
+        save_chat_entry(body.session_id, "Agent", final_output)
         
         return AgentResponse(
-            final_output=result.final_output,
+            final_output=final_output,
             status="success"
         )
     except asyncio.TimeoutError:
@@ -160,7 +173,65 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         raise HTTPException(status_code=504, detail="Agent execution timed out (complexity limit)")
     except Exception as e:
         print(f"Error executing agent: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal server error")
+
+from fastapi import UploadFile, File
+import shutil
+import os
+
+@app.post("/v1/agent/upload")
+async def upload_document(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """
+    Upload and ingest a PDF document into the RAG system.
+    """
+    # 1. Validate File Type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are currently supported.")
+
+    # 2. Save to Temp
+    upload_dir = "ManagerAgent/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = f"{upload_dir}/{file.filename}"
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # 3. Process with Ingestion Pipeline
+        from RAG_PIPELINE.src.ingestion import process_pdf
+        
+        result = await process_pdf(file_path)
+        
+        # 4. Clean up (Optional - maybe keep for debug?)
+        # os.remove(file_path) 
+        
+        return {"status": "success", "message": result, "filename": file.filename}
+        
+    except Exception as e:
+        print(f"Upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+
+@app.get("/v1/agent/documents")
+async def list_documents(user: dict = Depends(get_current_user)):
+    """
+    List all uploaded documents.
+    """
+    upload_dir = "ManagerAgent/uploads"
+    try:
+        if not os.path.exists(upload_dir):
+            return {"documents": []}
+            
+        files = [f for f in os.listdir(upload_dir) if f.endswith('.pdf')]
+        # Sort by modification time (newest first)
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(upload_dir, x)), reverse=True)
+        return {"documents": files}
+    except Exception as e:
+        print(f"Error listing documents: {e}")
+        return {"documents": []}
 
 if __name__ == "__main__":
     import uvicorn

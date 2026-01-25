@@ -1,5 +1,5 @@
 import httpx
-from core.config import settings
+from StockAgents.backend.core.config import settings
 from typing import List, Dict
 
 class FinnhubClient:

@@ -22,21 +22,22 @@ from .llm_service import llm_service
 MAIN_AGENT_PROMPT = """
 You are a Senior Portfolio Manager at a top-tier financial advisory firm. 
 
-Your goal is to provide holistic, actionable, and empathetic financial advice.
+Your goal is to provide holistic, actionable, and empathetic financial advice to your client.
 
 ### YOUR RESPONSIBILITIES:
 
-1.  **Orchestrate:** You receive reports from your Quantitative Analyst (Quant) and Market Researcher. Combine their insights into a single, cohesive recommendation.
+1.  **Orchestrate:** You have a team of sub-agents (a Quantitative Analyst and a Market Researcher). You will receive their reports. Your job is to combine their insights into a single, cohesive recommendation.
 
 2.  **Verify:** Cross-reference the "Math" (Quant) with the "Sentiment" (Researcher). If there's a major discrepancy, flag it.
 
 3.  **Synthesize:** Weave the reports together, don't just copy-paste.
 
 4.  **SCORING RULES (CRITICAL):**
-    - **START with the analystConsensusScore** from the Quant report — based on Wall Street professionals
+    - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals
     - Only adjust the score by ±10 points based on recent news from the Researcher
     - If 72/100 analysts say BUY, your score should be 65-80, NOT 50-60
     - NEWS should MODIFY the score, not REPLACE it
+    - Example: Analyst says 72/100 (BUY), Researcher says "minor concerns" → Your score: 68/100 (still BUY)
 
 5.  **RECOMMENDATION THRESHOLDS:**
     - Under 40 → SELL
@@ -51,9 +52,46 @@ Your goal is to provide holistic, actionable, and empathetic financial advice.
 * If real-time price differs from expectation, point it out.
 """
 
+
 class AgentEngine:
     def __init__(self):
         pass
+
+    async def _analyze_single_stock(self, symbol: str) -> Dict[str, Any]:
+        """
+        Run the full Hub-and-Spoke workflow for a SINGLE stock.
+        Returns: { symbol, quote, candles, quant, researcher, prediction }
+        """
+        # Import sub-agents
+        from .quant_agent import quant_agent
+        from .researcher_agent import researcher_agent
+        
+        # Parallel execution: Quote, Candles, Quant, Researcher
+        results = await asyncio.gather(
+            finnhub_client.get_quote(symbol),
+            finnhub_client.get_candles(symbol, resolution="D"),
+            quant_agent(symbol),
+            researcher_agent(f"Latest news and sentiment for {symbol} stock"),
+            return_exceptions=True
+        )
+        
+        quote = results[0] if not isinstance(results[0], Exception) else {}
+        candles = results[1] if not isinstance(results[1], Exception) else {}
+        quant_result = results[2] if not isinstance(results[2], Exception) else {"error": str(results[2])}
+        research_result = results[3] if not isinstance(results[3], Exception) else {"error": str(results[3])}
+        
+        # Prediction using current price
+        latest_close = quote.get('c', 150.0) if isinstance(quote, dict) else 150.0
+        prediction = predictive_engine.predict_next({'close': latest_close})
+        
+        return {
+            "symbol": symbol,
+            "quote": quote,
+            "candles": candles,
+            "quant": quant_result,
+            "researcher": research_result,
+            "prediction": prediction
+        }
 
     async def run_workflow(self, user_query: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -74,71 +112,57 @@ class AgentEngine:
             analysis_results = {"market_movers": movers}
 
         elif intent == "stock_analysis":
+            # Extract ONE symbol for single-stock analysis
             symbol = await self._extract_symbol(user_query) or "AAPL"
             
-            # === Hub-and-Spoke: Execute Sub-Agents in Parallel ===
-            quote_task = finnhub_client.get_quote(symbol)
-            candles_task = finnhub_client.get_candles(symbol, resolution="D")
-            
-            # Import sub-agents
-            from .quant_agent import quant_agent
-            from .researcher_agent import researcher_agent
-            
-            # Parallel execution: Quote, Candles, Quant, Researcher
-            results = await asyncio.gather(
-                quote_task,
-                candles_task,
-                quant_agent(symbol),
-                researcher_agent(f"Latest news and sentiment for {symbol} stock"),
-                return_exceptions=True
-            )
-            
-            quote = results[0] if not isinstance(results[0], Exception) else {}
-            candles = results[1] if not isinstance(results[1], Exception) else {}
-            quant_result = results[2] if not isinstance(results[2], Exception) else {"error": str(results[2])}
-            research_result = results[3] if not isinstance(results[3], Exception) else {"error": str(results[3])}
-            
-            # Prediction using current price
-            latest_close = quote.get('c', 150.0) if isinstance(quote, dict) else 150.0
-            prediction = predictive_engine.predict_next({'close': latest_close})
-            
-            # Collect sub-agent reports for synthesis
-            sub_agent_reports = {
-                "quant": quant_result,
-                "researcher": research_result
-            }
+            # Execute single stock workflow
+            stock_data = await self._analyze_single_stock(symbol)
             
             analysis_results = {
                 "symbol": symbol,
-                "quote": quote, 
-                "candles": candles,
-                "prediction": prediction,
-                "risk_data": quant_result.get("risk_data", {}),
-                "research": research_result.get("search_results", {})
+                "quote": stock_data["quote"], 
+                "candles": stock_data["candles"],
+                "prediction": stock_data["prediction"],
+                "risk_data": stock_data["quant"].get("risk_data", {}),
+                "research": stock_data["researcher"].get("search_results", {})
+            }
+            sub_agent_reports = {
+                "quant": stock_data["quant"],
+                "researcher": stock_data["researcher"]
             }
         
-        elif intent == "portfolio_optimization":
-            # Extract holdings for rebalancing
+        elif intent == "portfolio_optimization" or intent == "stock_comparison":
+            # Extract ALL involved assets
             holdings = await llm_service.extract_structured_data(user_query)
+            user_assets = list(holdings.keys()) if holdings else await llm_service.extract_tickers_list(user_query)
             
-            if holdings:
-                assets = list(holdings.keys())
-                allocation = await portfolio_engine.optimize_portfolio(assets, {}, current_holdings=holdings)
-            else:
-                user_assets = self._extract_portfolio_assets(user_query)
-                if not user_assets:
-                    user_assets = user_context.get("portfolio", ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META"])
-                allocation = await portfolio_engine.optimize_portfolio(user_assets, {})
+            if not user_assets and intent == "portfolio_optimization":
+                user_assets = user_context.get("portfolio", ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META"])
+            
+            # Limit to 3 assets for performance if it's a broad optimization, but allow more for specific comparison
+            target_assets = user_assets[:4] 
+
+            # === Parallel Deep Analysis for EACH Asset ===
+            # Run sub-agents for all targets in parallel
+            analysis_tasks = [self._analyze_single_stock(asset) for asset in target_assets]
+            multi_stock_results = await asyncio.gather(*analysis_tasks)
+            
+            # Structure results for synthesis
+            sub_agent_reports = {
+                "multi_stock": True,
+                "reports": {res["symbol"]: res for res in multi_stock_results}
+            }
+            
+            # Also run Portfolio Optimization (allocation)
+            allocation = await portfolio_engine.optimize_portfolio(target_assets, {}, current_holdings=holdings or {})
             
             # Fetch Charts for all assets
-            charts_data = {}
-            target_assets = list(allocation.get("allocation", {}).keys())
-            for asset in target_assets:
-                charts_data[asset] = await finnhub_client.get_candles(asset, resolution="D")
+            charts_data = {res["symbol"]: res["candles"] for res in multi_stock_results}
 
             analysis_results = {
                 "optimization": allocation,
-                "charts": charts_data 
+                "charts": charts_data,
+                "deep_analysis": sub_agent_reports["reports"] # Include deep data in analysis
             }
 
         # 3. Decide & 4. Act - Generate Recommendation
@@ -152,6 +176,8 @@ class AgentEngine:
 
     def _detect_intent(self, query: str) -> str:
         query = query.lower()
+        if "compare" in query or "vs" in query or "better" in query:
+             return "stock_comparison"
         if "optimize" in query or "portfolio" in query or "rebalance" in query or "allocat" in query:
             return "portfolio_optimization"
         if "filter" in query or "scan" in query or "gainer" in query or "mover" in query:
@@ -163,7 +189,7 @@ class AgentEngine:
         words = query.split()
         for word in words:
             if word.isupper() and len(word) <= 5:
-                if word not in ["WHAT", "WHEN", "HOW", "WHY", "WHO"]:
+                if word not in ["WHAT", "WHEN", "HOW", "WHY", "WHO", "I", "A", "OR", "IF", "IS", "IT", "TO", "DO", "BUY", "SELL"]:
                     return word
         
         # 2. Fallback to LLM Resolution (Smart Name Search)
@@ -174,7 +200,8 @@ class AgentEngine:
         matches = re.findall(r'\b[A-Z]{2,5}\b', query)
         stop_words = {
             "WHAT", "WHEN", "HOW", "WHY", "WHO", "AND", "FOR", "THE", "ARE", 
-            "IS", "NOT", "BUT", "ALL", "ANY", "CAN", "GET", "SET", "PUT", "BUY", "SELL"
+            "IS", "NOT", "BUT", "ALL", "ANY", "CAN", "GET", "SET", "PUT", "BUY", "SELL",
+            "VS", "OR", "BETWEEN", "COMPARE", "GIVE", "SHOW", "TELL", "ME", "ABOUT", "OPTIMIZE"
         }
         assets = [m for m in matches if m not in stop_words]
         return list(set(assets))
@@ -192,13 +219,31 @@ class AgentEngine:
             "technical_data": analysis
         }
         
-        # For stock analysis, use full synthesis with sub-agent reports
+        synthesis_prompt = ""
+
+        # Case 1: Single Stock Analysis
         if intent == "stock_analysis" and sub_agent_reports:
             quant_report = sub_agent_reports.get("quant", {}).get("analysis", "No quant data")
             research_report = sub_agent_reports.get("researcher", {}).get("analysis", "No research data")
             
+            # Extract rich data for single stock
+            # Notes: 'quant' result contains 'risk_data' with full analyst metrics
+            risk_data = sub_agent_reports.get("quant", {}).get("risk_data", {})
+            analyst_score = risk_data.get('analystConsensusScore', 'N/A')
+            buy_count = risk_data.get('buyCount', 'N/A')
+            sell_count = risk_data.get('sellCount', 'N/A')
+            total_analysts = risk_data.get('totalAnalysts', 'N/A')
+            pe_ratio = risk_data.get('peRatio', 'N/A')
+            
             synthesis_prompt = f"""
 User Query: {query}
+
+=== KEY FINANCIAL METRICS ===
+PRICE: ${analysis.get('quote', {}).get('c', 'N/A')}
+ANALYST CONSENSUS SCORE: {analyst_score}/100
+WALL STREET OPINION: {buy_count} Buy vs {sell_count} Sell (from {total_analysts} analysts)
+P/E RATIO: {pe_ratio}
+BETA: {risk_data.get('beta', 'N/A')}
 
 === QUANT AGENT REPORT ===
 {quant_report}
@@ -206,15 +251,85 @@ User Query: {query}
 === RESEARCHER AGENT REPORT ===
 {research_report}
 
-=== MARKET DATA ===
-{json.dumps(analysis, indent=2, default=str)[:3000]}
+=== INSTRUCTIONS ===
+You are a Financial Analyst.
+**FORMATTING RULE**: OUTPUT AS PLAIN TEXT LISTS.
+**ABSOLUTELY NO MARKDOWN TABLES**.
+**ABSOLUTELY NO PIPES (|) or TABLE ROWS**.
 
-Based on the above reports from your team, synthesize a final recommendation for the user.
-Remember to use the scoring rules from your system prompt.
+**Required Format:**
+
+### 1. Comparison Summary
+(Use a bulleted list to compare metrics)
+*   **[Ticker]**: Price: $X // Score: Y // P/E: Z // Recomm: Buy/Sell
+*Example:*
+*   **AAPL**: Price: $150 // Score: 85 // P/E: 25x // Buy
+*   **MSFT**: Price: $250 // Score: 80 // P/E: 30x // Hold
+
+### 2. Deep Dive
+(For each ticker, detailed bullet points)
+*   **Price**: ...
+*   **Consensus**: ...
+*   **Metrics**: ...
+*   **Analysis**: ...
+
+### 3. Verdict
+*   **Winner**: [Ticker]
+*   **Score**: X/100
+*   **Why**: [One sentence]
 """
+        
+        # Case 2: Multi-Stock Comparison / Optimization
+        elif (intent == "stock_comparison" or intent == "portfolio_optimization") and sub_agent_reports and "multi_stock" in sub_agent_reports:
+             reports = sub_agent_reports.get("reports", {})
+             
+             reports_text = ""
+             for symbol, data in reports.items():
+                 # Extract analyst data directly to ensure it's available
+                 quant_data = data.get('quant', {}).get('risk_data', {})
+                 analyst_score = quant_data.get('analystConsensusScore', 'N/A')
+                 analyst_rec = quant_data.get('analystRecommendation', 'N/A')
+                 total_analysts = quant_data.get('totalAnalysts', 'N/A')
+                 buy_count = quant_data.get('buyCount', 0)
+                 sell_count = quant_data.get('sellCount', 0)
+                 
+                 reports_text += f"""
+--- ANALYSIS FOR {symbol} ---
+PRICE: ${data['quote'].get('c', 'N/A')}
+ANALYST CONSENSUS: {analyst_score}/100 ({analyst_rec})
+WALL STREET OPINION: {buy_count} Buy vs {sell_count} Sell (from {total_analysts} analysts)
+KEY METRICS: Beta: {quant_data.get('beta', 'N/A')}, P/E: {quant_data.get('peRatio', 'N/A')}
+
+QUANT ANALYSIS: 
+{data['quant'].get('analysis', 'N/A')}
+
+RESEARCH SUMMARY:
+{data['researcher'].get('analysis', 'N/A')}
+-----------------------------
+"""
+             synthesis_prompt = f"""
+User Query: {query}
+
+You are a Senior Portfolio Manager. Compare these assets using the data below.
+CRITICAL: You MUST use specific numbers and evidence.
+
+{reports_text}
+
+=== OPTIMIZATION DATA ===
+{json.dumps(analysis.get('optimization', {}), indent=2, default=str)}
+
+INSTRUCTIONS:
+1. **Data Comparison Table**: Create a Markdown table comparing Price, Analyst Score, P/E Ratio, and Wall Street Signal (Buy/Sell counts) for each stock.
+2. **Deep Dive**: For each stock, provide specific evidence (e.g., "Apple has 35 Buy ratings...", "Meta's P/E is...").
+3. **Wall Street Consensus**: Explicitly state what Finnhub data says about analyst opinions.
+4. **Recommendation**: Conclude with a clear, data-backed verdict.
+"""
+
+        # Execute Synthesis if we have a prompt
+        if synthesis_prompt:
             try:
                 from groq import AsyncGroq
-                from core.config import settings
+                from StockAgents.backend.core.config import settings
                 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
                 
                 response = await client.chat.completions.create(
@@ -224,9 +339,10 @@ Remember to use the scoring rules from your system prompt.
                         {"role": "user", "content": synthesis_prompt}
                     ],
                     temperature=0.5,
-                    max_tokens=600
+                    max_tokens=1000
                 )
-                return response.choices[0].message.content
+                response_text = response.choices[0].message.content
+                return response_text + "\n\n_Data Sources: Finnhub (Real-Time Price & Analyst Ratings), Yahoo Finance (Historical Volatility), Tavily (Market News)._"
             except Exception as e:
                 print(f"Synthesis error: {e}")
                 return await llm_service.analyze_context(query, context)

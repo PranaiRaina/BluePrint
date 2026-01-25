@@ -10,24 +10,25 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 load_dotenv()
 
 # API Keys
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 WOLFRAM_APP_ID = os.getenv("WOLFRAM_APP_ID")
 
 # Wolfram Alpha LLM API endpoint
 WOLFRAM_API_URL = "https://www.wolframalpha.com/api/v1/llm-api"
 
-# Configure Groq client
+# Configure Gemini client (OpenAI Compatible)
+# Docs: https://ai.google.dev/gemini-api/docs/openai
 groq_client = AsyncOpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=GROQ_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=GOOGLE_API_KEY,
 )
 
 # Disable tracing (we don't have an OpenAI API key)
 set_tracing_disabled(True)
 
-# Model configuration - Using OpenAIChatCompletionsModel to preserve model name
-# This is required because the SDK strips prefixes like "openai/" when using string model names
+# Model configuration
+# We use OpenAIChatCompletionsModel to pass the specific Gemini model name cleanly
 MODEL = OpenAIChatCompletionsModel(
-    model="openai/gpt-oss-120b",
+    model="gemini-2.0-flash",
     openai_client=groq_client,
 )

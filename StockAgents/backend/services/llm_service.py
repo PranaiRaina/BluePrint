@@ -1,13 +1,15 @@
-from groq import Groq, AsyncGroq
-from core.config import settings
+from openai import AsyncOpenAI
+from StockAgents.backend.core.config import settings
 import json
 
 class LLMService:
     def __init__(self):
-        # Initialize Groq client
-        # It automatically looks for GROQ_API_KEY env var, but we can pass it explicitly if needed
-        self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.model = "llama-3.3-70b-versatile" # High performance model
+        # Initialize Gemini client via OpenAI SDK
+        self.client = AsyncOpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=settings.GOOGLE_API_KEY
+        )
+        self.model = "gemini-2.0-flash" # High performance model
 
     async def analyze_context(self, query: str, context_data: dict) -> str:
         """
@@ -112,5 +114,49 @@ class LLMService:
             return None
         except Exception:
             return None
+
+    async def extract_tickers_list(self, query: str) -> list[str]:
+        """
+        Extracts ALL stock tickers mentioned in a query, resolving company names.
+        Example: "Compare Apple, Meta and NVDA" -> ["AAPL", "META", "NVDA"]
+        """
+        system_prompt = (
+            "You are a Ticker Extractor. Extract ALL company names or tickers mentioned in the user's query "
+            "and convert them to their primary US stock market tickers. "
+            "Return ONLY a JSON list of strings. "
+            "Example: 'Compare Microsoft and Google' -> ['MSFT', 'GOOGL'] "
+            "Example: 'Optimize Meta vs Tesla' -> ['META', 'TSLA'] "
+            "If no companies found, return empty list []."
+        )
+        
+        try:
+            completion = await self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
+                model=self.model,
+                temperature=0.0,
+                response_format={"type": "json_object"}
+            )
+            content = completion.choices[0].message.content
+            # Expecting {"tickers": [...]} or just a list if possible? 
+            # OpenAI JSON mode ensures valid JSON. Let's ask for specific key in prompt or parse list directly.
+            # Actually, standard JSON object requirement means we should ask for a key.
+            # Let's refine prompt above slightly in next step or just handle parsing.
+            # Wait, I can't refine prompt in "ReplacementContent" easily if I don't change the execution logic.
+            # I'll rely on parsing.
+            data = json.loads(content)
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                # Search values for a list
+                for val in data.values():
+                    if isinstance(val, list):
+                        return [str(x).upper() for x in val]
+            return []
+        except Exception as e:
+            print(f"LLM Ticker Extraction Error: {e}")
+            return []
 
 llm_service = LLMService()

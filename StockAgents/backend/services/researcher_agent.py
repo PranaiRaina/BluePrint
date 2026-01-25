@@ -9,15 +9,18 @@ PRIVACY: Only market-related queries are passed to Tavily.
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from groq import AsyncGroq
-from core.config import settings
+from openai import AsyncOpenAI
+from StockAgents.backend.core.config import settings
 
 # Thread pool for blocking Tavily calls
 executor = ThreadPoolExecutor(max_workers=3)
 
-# LLM Client
-llm_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-RESEARCHER_MODEL = "llama-3.1-8b-instant"  # Fast inference
+# LLM Client (Gemini via OpenAI SDK)
+llm_client = AsyncOpenAI(
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=settings.GOOGLE_API_KEY
+)
+RESEARCHER_MODEL = "gemini-2.0-flash"  # Fast inference
 
 RESEARCHER_SYSTEM_PROMPT = """
 You are a Market Intelligence Researcher (The Scout).
@@ -44,7 +47,7 @@ async def researcher_agent(query: str) -> dict:
     Returns:
         {analysis: str, search_results: dict}
     """
-    from tools.tavily_tool import tavily_market_search
+    from StockAgents.backend.tools.tavily_tool import tavily_market_search
     
     # Step 1: Perform market search (in executor - blocking)
     loop = asyncio.get_running_loop()

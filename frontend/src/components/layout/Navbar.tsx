@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Database, MessageSquare, Code, TrendingUp } from 'lucide-react';
+import { Home, Database, Code } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface NavbarProps {
@@ -10,9 +10,7 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
     const tabs = [
         { id: 'overview', label: 'Home', icon: Home },
-        { id: 'market', label: 'Market', icon: TrendingUp },
         { id: 'vault', label: 'Vault', icon: Database },
-        { id: 'chat', label: 'Chat', icon: MessageSquare },
     ];
 
     return (

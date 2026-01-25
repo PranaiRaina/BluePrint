@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Brain, Zap, TrendingUp } from 'lucide-react';
+import { Search, Brain, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+
+
 
 import Navbar from '../components/layout/Navbar';
 import UploadZone from '../components/views/UploadZone';
@@ -198,20 +200,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
                 {/* --- Other Views --- */}
                 <div className="w-full">
-                    {activeTab === 'market' && (
-                        <div className="w-full max-w-7xl px-4 mt-8">
-                            <h2 className="text-2xl font-serif font-bold text-white mb-6">Market Intelligence</h2>
-                            <div className="glass-card p-8 text-center">
-                                <TrendingUp className="w-12 h-12 text-primary mx-auto mb-4" />
-                                <p className="text-slate-300 text-lg">
-                                    Stock Analysis is now integrated into the main <strong>Home</strong> search.
-                                    <br />
-                                    Try asking: <em>"Analyze AAPL"</em> or <em>"Compare NVDA vs AMD"</em>
-                                </p>
-                            </div>
-                        </div>
-                    )}
-                    {activeTab === 'vault' && <UploadZone />}
+                    {/* Market Tab Removed */}
+                    {activeTab === 'vault' && <UploadZone session={session} />}
                     {activeTab === 'chat' && <ChatView session={session} />}
                 </div>
 

@@ -146,7 +146,7 @@ def wolfram_risk_analysis(ticker: str, prices: list = None, metrics: dict = None
     Returns:
         Combined risk analysis dict
     """
-    from tools.yfinance_tool import get_historical_prices
+    from StockAgents.backend.tools.yfinance_tool import get_historical_prices
     
     ticker = ticker.upper().strip()
     

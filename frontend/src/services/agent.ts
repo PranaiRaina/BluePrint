@@ -45,5 +45,65 @@ export const agentService = {
             console.error("Agent API Error:", error);
             throw error;
         }
+    },
+
+    /**
+     * Upload a document for RAG ingestion.
+     */
+    upload: async (file: File, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/upload`, {
+                method: 'POST',
+                headers, // Do NOT set Content-Type for FormData, browser does it automatically with boundary
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Upload Error: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Upload API Error:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get list of uploaded documents.
+     */
+    getDocuments: async (session: Session | null): Promise<string[]> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/documents`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) {
+                return [];
+            }
+
+            const data = await response.json();
+            return data.documents || [];
+        } catch (error) {
+            console.error("Fetch Documents Error:", error);
+            return [];
+        }
     }
 };

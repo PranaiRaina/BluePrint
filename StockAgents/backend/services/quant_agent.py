@@ -8,15 +8,18 @@ import json
 import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from groq import AsyncGroq
-from core.config import settings
+from openai import AsyncOpenAI
+from StockAgents.backend.core.config import settings
 
 # Thread pool for blocking Wolfram calls
 executor = ThreadPoolExecutor(max_workers=3)
 
-# LLM Client
-llm_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-QUANT_MODEL = "llama-3.1-8b-instant"  # Fast inference
+# LLM Client (Gemini via OpenAI SDK)
+llm_client = AsyncOpenAI(
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=settings.GOOGLE_API_KEY
+)
+QUANT_MODEL = "gemini-2.0-flash"  # Fast inference
 
 QUANT_SYSTEM_PROMPT = """
 You are a Quantitative Analyst (The Quant). 
@@ -46,9 +49,9 @@ async def quant_agent(ticker: str) -> dict:
     Returns:
         {analysis: str, risk_data: dict}
     """
-    from tools.wolfram_tool import wolfram_risk_analysis
-    from tools.yfinance_tool import get_historical_prices
-    from services.finnhub_client import finnhub_client
+    from StockAgents.backend.tools.wolfram_tool import wolfram_risk_analysis
+    from StockAgents.backend.tools.yfinance_tool import get_historical_prices
+    from StockAgents.backend.services.finnhub_client import finnhub_client
     
     ticker = ticker.upper().strip()
     

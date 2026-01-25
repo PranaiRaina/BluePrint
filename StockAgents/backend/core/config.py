@@ -29,11 +29,13 @@ class Settings(BaseSettings):
     # Stock APIs
     ALPHA_VANTAGE_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
     FINNHUB_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
 
     class Config:
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"  # Ignore extra env vars from project's .env
 
 settings = Settings()

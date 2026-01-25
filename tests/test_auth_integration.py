@@ -29,7 +29,10 @@ def test_real_env_configuration():
     
     token = jwt.encode(payload, secret, algorithm="HS256")
     
-    # Verify it using the actual backend logic
-    decoded = verify_token(token)
+    # Ensure the verification module uses the same secret
+    from unittest.mock import patch
+    with patch("Auth.verification.SUPABASE_JWT_SECRET", secret):
+        # Verify it using the actual backend logic
+        decoded = verify_token(token)
     
     assert decoded["sub"] == "integration-test-user"

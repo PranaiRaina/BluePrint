@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import cvxpy as cp
-from core.config import settings
+from StockAgents.backend.core.config import settings
 from typing import List, Dict
 
 class PortfolioEngine:

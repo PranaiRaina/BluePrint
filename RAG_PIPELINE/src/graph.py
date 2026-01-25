@@ -14,26 +14,17 @@ class GraphState(TypedDict):
     generation: str
     documents: List[Document]
 
-from langchain_groq import ChatGroq
 
 # --- Initialization ---
 def get_llm():
     """
-    Returns the configured LLM based on settings.LLM_PROVIDER.
+    Returns the configured LLM (Gemini).
     """
-    provider = settings.LLM_PROVIDER.lower()
+    if not settings.GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY is not set.")
     
-    if provider == "groq":
-        if not settings.GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY is not set.")
-        # Using Llama 3 8B optimized for Groq
-        return ChatGroq(model="llama3-8b-8192", groq_api_key=settings.GROQ_API_KEY)
-    
-    else: # Default to Gemini
-        if not settings.GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY is not set.")
-        # Using gemini-flash-latest as verified from list_models()
-        return ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=settings.GOOGLE_API_KEY)
+    # Using gemini-2.0-flash for high speed and reasoning
+    return ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=settings.GOOGLE_API_KEY)
 
 llm = get_llm()
 
@@ -59,7 +50,7 @@ def retrieve(state: GraphState):
     results = vectorstore.similarity_search_with_relevance_scores(question, k=4)
     
     # Filter by Threshold
-    THRESHOLD = 0.45
+    THRESHOLD = 0.35
     documents = []
     
     for doc, score in results:
