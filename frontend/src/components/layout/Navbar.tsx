@@ -1,18 +1,18 @@
 import React from 'react';
-import { Home, Database, TrendingUp, MessageSquare, Code } from 'lucide-react';
+import { Home, Database, MessageSquare, Code, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface NavbarProps {
-    activeTab: 'overview' | 'vault' | 'market' | 'chat';
-    setActiveTab: (tab: 'overview' | 'vault' | 'market' | 'chat') => void;
+    activeTab: 'overview' | 'market' | 'vault' | 'chat';
+    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat') => void;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
     const tabs = [
-        { id: 'overview', label: 'Overview', icon: Home },
-        { id: 'vault', label: 'Data Vault', icon: Database },
-        { id: 'market', label: 'Market Pro', icon: TrendingUp },
-        { id: 'chat', label: 'Deep Dive', icon: MessageSquare },
+        { id: 'overview', label: 'Home', icon: Home },
+        { id: 'market', label: 'Market', icon: TrendingUp },
+        { id: 'vault', label: 'Vault', icon: Database },
+        { id: 'chat', label: 'Chat', icon: MessageSquare },
     ];
 
     return (
@@ -40,8 +40,8 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all duration-300 relative ${isActive
-                                    ? 'text-white'
-                                    : 'text-text-secondary hover:text-white hover:bg-white/5'
+                                ? 'text-white'
+                                : 'text-text-secondary hover:text-white hover:bg-white/5'
                                 }`}
                         >
                             {isActive && (

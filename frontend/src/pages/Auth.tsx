@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
-interface AuthProps {
-    onLogin: () => void;
-}
+const Auth: React.FC = () => {
+    const [loading, setLoading] = useState(false);
 
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+    const handleLogin = async (provider: 'google' | 'azure') => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: provider,
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error logging in:', error);
+            alert('Error logging in. Please check console for details.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
             {/* Background Ambient Glow removed in favor of global Aura */}
@@ -24,7 +41,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
 
                 <h1 className="text-4xl font-sans font-bold mb-2 bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-                    BoostUp
+                    Quantix
                 </h1>
                 <p className="text-text-secondary mb-8 text-lg">
                     Agentic Financial Intelligence
@@ -32,20 +49,30 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                 <div className="space-y-4">
                     <button
-                        onClick={onLogin}
-                        className="w-full glass-input hover:bg-white/10 flex items-center justify-center gap-3 group transition-all"
+                        onClick={() => handleLogin('google')}
+                        disabled={loading}
+                        className="w-full glass-input hover:bg-white/10 flex items-center justify-center gap-3 group transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <img src="https://www.svgrepo.com/show/355037/google.svg" alt="Google" className="w-5 h-5" />
-                        <span className="font-medium">Continue with Google</span>
-                        <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity translate-x-[-10px] group-hover:translate-x-0" />
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                            <>
+                                <img src="https://www.svgrepo.com/show/355037/google.svg" alt="Google" className="w-5 h-5" />
+                                <span className="font-medium">Continue with Google</span>
+                                <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity translate-x-[-10px] group-hover:translate-x-0" />
+                            </>
+                        )}
                     </button>
 
                     <button
-                        onClick={onLogin}
-                        className="w-full glass-input hover:bg-white/10 flex items-center justify-center gap-3 group transition-all"
+                        onClick={() => handleLogin('azure')}
+                        disabled={loading}
+                        className="w-full glass-input hover:bg-white/10 flex items-center justify-center gap-3 group transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <img src="https://www.svgrepo.com/show/355118/microsoft.svg" alt="Microsoft" className="w-5 h-5" />
-                        <span className="font-medium">Continue with Microsoft</span>
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                            <>
+                                <img src="https://www.svgrepo.com/show/355118/microsoft.svg" alt="Microsoft" className="w-5 h-5" />
+                                <span className="font-medium">Continue with Microsoft</span>
+                            </>
+                        )}
                     </button>
                 </div>
 

@@ -1,28 +1,47 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
+import type { Session } from '@supabase/supabase-js';
+import { agentService } from '../../services/agent';
 
-const ChatView: React.FC = () => {
+interface ChatViewProps {
+    session: Session;
+}
+
+const ChatView: React.FC<ChatViewProps> = ({ session }) => {
     const [messages, setMessages] = useState([
         { role: 'ai', content: "Hello. I'm Bloom, your advanced financial analyst. I have access to your uploaded documents and real-time market data. What would you like to deep dive into today?" }
     ]);
     const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSend = (e: React.FormEvent) => {
+    const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim()) return;
+        if (!input.trim() || isLoading) return;
 
-        const newMsgs = [...messages, { role: 'user', content: input }];
+        const userQuery = input;
+        const newMsgs = [...messages, { role: 'user', content: userQuery }];
         setMessages(newMsgs);
         setInput('');
+        setIsLoading(true);
 
-        // Mock AI Response
-        setTimeout(() => {
+        try {
+            // Real API Call
+            const response = await agentService.calculate(userQuery, session);
+
             setMessages(prev => [...prev, {
                 role: 'ai',
-                content: "I've analyzed the correlation between your 'Tech_Sector_Trends' document and current NVDA movements. It appears your exposure is optimal, though a 5% hedge could reduce downside risk."
+                content: response.final_output
             }]);
-        }, 1500);
+        } catch (error) {
+            console.error(error);
+            setMessages(prev => [...prev, {
+                role: 'ai',
+                content: "I encountered an error connecting to the financial brain. Please try again."
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -33,7 +52,6 @@ const ChatView: React.FC = () => {
                 </div>
                 <div>
                     <h2 className="text-xl font-bold text-white">Deep Dive Analyst</h2>
-                    <p className="text-xs text-emerald-400">Online • Context Output: High</p>
                 </div>
             </div>
 
@@ -49,13 +67,23 @@ const ChatView: React.FC = () => {
                             {msg.role === 'ai' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </div>
                         <div className={`p-4 rounded-2xl max-w-[80%] text-sm leading-relaxed ${msg.role === 'ai'
-                                ? 'bg-white/5 text-slate-200 border border-white/5'
-                                : 'bg-primary/20 text-white border border-primary/20'
+                            ? 'bg-white/5 text-slate-200 border border-white/5'
+                            : 'bg-primary/20 text-white border border-primary/20'
                             }`}>
                             {msg.content}
                         </div>
                     </motion.div>
                 ))}
+                {isLoading && (
+                    <div className="flex gap-4">
+                        <div className="w-8 h-8 rounded-full bg-ai/20 flex items-center justify-center shrink-0">
+                            <Bot className="w-4 h-4 text-ai animate-pulse" />
+                        </div>
+                        <div className="p-4 rounded-2xl bg-white/5 text-slate-400 border border-white/5 text-xs">
+                            Thinking...
+                        </div>
+                    </div>
+                )}
             </div>
 
             <form onSubmit={handleSend} className="mt-4 relative">
@@ -65,10 +93,12 @@ const ChatView: React.FC = () => {
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask complex questions about your data..."
                     className="w-full glass-input pr-12 !py-4"
+                    disabled={isLoading}
                 />
                 <button
                     type="submit"
-                    className="absolute right-2 top-2 bottom-2 p-2 bg-ai/20 text-ai hover:bg-ai hover:text-white rounded-lg transition-all"
+                    className="absolute right-2 top-2 bottom-2 p-2 bg-ai/20 text-ai hover:bg-ai hover:text-white rounded-lg transition-all disabled:opacity-50"
+                    disabled={isLoading}
                 >
                     <Send className="w-5 h-5" />
                 </button>

@@ -1,83 +1,65 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Brain, Zap, TrendingUp, BarChart3 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Search, Brain, Zap, TrendingUp } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 import Navbar from '../components/layout/Navbar';
 import UploadZone from '../components/views/UploadZone';
-import StockView from '../components/views/StockView';
 import ChatView from '../components/views/ChatView';
 import Typewriter from '../components/ui/Typewriter';
-import Ticker from '../components/ui/Ticker';
 
-const Dashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'vault' | 'market' | 'chat'>('overview');
+import type { Session } from '@supabase/supabase-js';
+import { agentService } from '../services/agent';
 
-    // Overview State
+interface DashboardProps {
+    session: Session;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ session }) => {
+    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat'>('overview');
+
     const [query, setQuery] = useState('');
     const [isLifted, setIsLifted] = useState(false);
     const [loadingStage, setLoadingStage] = useState(0); // 0: Idle, 1: Reading, 2: Computing, 3: Done
-    const [riskLevel, setRiskLevel] = useState(50);
     const [mockInsight, setMockInsight] = useState<{ hard: { score: string, yield: string, conf: string }, soft: { source: string, quote: string, strategy: string } } | null>(null);
 
-    // Dynamic Chart Data based on Risk Level
-    const getChartData = () => {
-        const baseGrowth = 1 + (riskLevel / 100) * 0.15; // 0% to 15% extra growth factor
-        const volatility = (riskLevel / 100) * 2000;
 
-        return [
-            { name: '2024', value: 4000 },
-            { name: '2025', value: 4000 * Math.pow(baseGrowth, 1) + (Math.random() * volatility - volatility / 2) },
-            { name: '2026', value: 4000 * Math.pow(baseGrowth, 2) + (Math.random() * volatility - volatility / 2) },
-            { name: '2027', value: 4000 * Math.pow(baseGrowth, 3) + (Math.random() * volatility - volatility / 2) },
-            { name: '2028', value: 4000 * Math.pow(baseGrowth, 4) + (Math.random() * volatility - volatility / 2) },
-            { name: '2029', value: 4000 * Math.pow(baseGrowth, 5) + (Math.random() * volatility - volatility / 2) },
-            { name: '2030', value: 4000 * Math.pow(baseGrowth, 6) }
-        ].map(d => ({ ...d, value: Math.round(d.value) }));
-    };
 
-    const handleSearch = (e: React.FormEvent) => {
+    const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query) return;
         setIsLifted(true);
         setLoadingStage(1);
 
-        // Simulate Agentic Steps
-        setTimeout(() => setLoadingStage(2), 1500); // Computing
+        try {
+            // Stage 1: Scanning (Visual)
+            await new Promise(r => setTimeout(r, 800));
+            setLoadingStage(2);
 
-        setTimeout(() => {
-            // Generate Context-Aware Mock Data
-            const lowerQ = query.toLowerCase();
-            if (lowerQ.includes('debt') || lowerQ.includes('loan')) {
-                setMockInsight({
-                    hard: { score: "Med (5.8)", yield: "4.2%", conf: "98%" },
-                    soft: {
-                        source: "Credit_Report_2024.pdf",
-                        quote: "Auto loan APR at 7.5% is eroding checking account gains.",
-                        strategy: "Aggressive pay-down of 7.5% loan outperforms expected market returns (6%)."
-                    }
-                });
-            } else if (lowerQ.includes('invest') || lowerQ.includes('stock') || lowerQ.includes('wealth')) {
-                setMockInsight({
-                    hard: { score: "High (8.2)", yield: "12.4%", conf: "85%" },
-                    soft: {
-                        source: "Market_Analysis_Q3.pdf",
-                        quote: "Tech sector showing strong breakout signals in mid-cap options.",
-                        strategy: "Shift 15% of bonds to high-growth ETFs to capture upside."
-                    }
-                });
-            } else {
-                setMockInsight({
-                    hard: { score: "Low (3.2)", yield: "7.8%", conf: "94%" },
-                    soft: {
-                        source: "Bob_Jones_Report.pdf",
-                        quote: "High cash reserves detected (>20%). Recommended shifting $15k into high-yield bonds.",
-                        strategy: "Reducing debt load on the 7% auto loan serves better long-term ROI."
-                    }
-                });
-            }
+            // Stage 2: Computing (Real API Call)
+            const response = await agentService.calculate(query, session);
+
+            // Allow time for "Computing" animation if API was too fast
+            await new Promise(r => setTimeout(r, 500));
+
+            // Parse Agent Output
+            // Since the agent returns text, we'll try to display it intelligently.
+            // Ideally, we'd prompt the agent for JSON, but for now we put the text in the "strategy" field
+            setMockInsight({
+                hard: { score: "Calculated", yield: "Dynamic", conf: "High" },
+                soft: {
+                    source: "Agent Analysis",
+                    quote: response.final_output.substring(0, 150) + (response.final_output.length > 150 ? "..." : ""),
+                    strategy: response.final_output
+                }
+            });
+
             setLoadingStage(3);
-        }, 3000); // Done
+        } catch (error) {
+            console.error(error);
+            setLoadingStage(0); // Reset on error
+            alert("Agent failed to respond. Is the backend running on port 8001?");
+        }
     };
 
     const data = mockInsight || {
@@ -94,8 +76,6 @@ const Dashboard: React.FC = () => {
             <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
             <div className="pt-16 relative z-10 flex flex-col items-center">
-                {/* Live Ticker */}
-                <Ticker />
 
                 {/* --- Overview View --- */}
                 {activeTab === 'overview' && (
@@ -123,18 +103,29 @@ const Dashboard: React.FC = () => {
                             <form onSubmit={handleSearch} className="w-full relative max-w-2xl">
                                 <div className="relative group">
                                     <div className={`absolute -inset-1 bg-gradient-to-r from-primary to-ai rounded-2xl blur opacity-25 group-hover:opacity-60 transition duration-1000 group-hover:duration-200 ${loadingStage > 0 && loadingStage < 3 ? 'animate-pulse' : ''}`}></div>
-                                    <input
-                                        type="text"
+                                    <textarea
                                         value={query}
-                                        onChange={(e) => setQuery(e.target.value)}
+                                        onChange={(e) => {
+                                            setQuery(e.target.value);
+                                            // Auto-resize textarea
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSearch(e);
+                                            }
+                                        }}
                                         placeholder="ask me anything..."
-                                        className="relative w-full glass-input text-lg py-4 pl-12 pr-20 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50"
+                                        rows={1}
+                                        className="relative w-full glass-input text-lg py-4 pl-12 pr-28 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50 resize-none overflow-hidden min-h-[56px]"
                                     />
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary w-5 h-5" />
+                                    <Search className="absolute left-4 top-5 text-text-secondary w-5 h-5" />
 
                                     <button
                                         type="submit"
-                                        className="absolute right-2 top-2 bottom-2 neon-button !rounded-xl !px-6 flex items-center gap-2 group-hover:bg-ai/30 transition-all"
+                                        className="absolute right-2 top-2 neon-button !rounded-xl !px-6 h-10 flex items-center gap-2 group-hover:bg-ai/30 transition-all"
                                     >
                                         <span className="text-sm font-semibold tracking-wide">RUN</span>
                                         <Zap className="w-3 h-3 fill-current" />
@@ -152,8 +143,8 @@ const Dashboard: React.FC = () => {
                                         className="mt-6 flex items-center gap-3 text-ai font-mono text-sm bg-ai/10 px-4 py-2 rounded-full border border-ai/20"
                                     >
                                         <div className="w-2 h-2 bg-ai rounded-full animate-ping" />
-                                        {loadingStage === 1 && "SCANNING SECURE DOCUMENTS..."}
-                                        {loadingStage === 2 && "RUNNING WOLFRAM COMPUTATIONS..."}
+                                        {loadingStage === 1 && "SCANNING DOCUMENTS (RAG)..."}
+                                        {loadingStage === 2 && "RUNNING AGENT ANALYSIS..."}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -166,109 +157,36 @@ const Dashboard: React.FC = () => {
                                     initial={{ opacity: 0, y: 40 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.8, delay: 0.2 }}
-                                    className="w-full mt-12 pb-12 grid grid-cols-1 md:grid-cols-3 gap-6"
+                                    className="w-full max-w-3xl mt-12 pb-12"
                                 >
-                                    {/* Zone 1: Hard Data (Wolfram) */}
-                                    <div className="glass-card p-6 flex flex-col gap-4 group hover:border-primary/30 transition-colors">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-primary/10 rounded-lg">
-                                                <BarChart3 className="text-primary w-5 h-5" />
-                                            </div>
-                                            <h2 className="font-serif font-bold text-xl text-white">Analysis</h2>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                                <span className="text-text-secondary text-sm">Risk Score</span>
-                                                <span className="font-mono text-xl text-primary font-bold">{data.hard.score}</span>
-                                            </div>
-                                            <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                                <span className="text-text-secondary text-sm">Est. Yield</span>
-                                                <span className="font-mono text-xl text-white font-bold">{data.hard.yield}</span>
-                                            </div>
-                                            <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                                <span className="text-text-secondary text-sm">Confidence</span>
-                                                <span className="font-mono text-xl text-ai font-bold">{data.hard.conf}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-auto pt-4">
-                                            <button className="text-xs text-text-secondary hover:text-white flex items-center gap-1 transition-colors">
-                                                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Wolfram_Language_Logo.svg/1200px-Wolfram_Language_Logo.svg.png" className="w-4 h-4 opacity-50 block grayscale group-hover:grayscale-0 transition-all" alt="Wolfram" />
-                                                Verified Computation
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Zone 2: Soft Data (RAG Insights) */}
-                                    <div className="glass-card p-6 flex flex-col gap-4 group hover:border-ai/30 transition-colors">
-                                        <div className="flex items-center gap-3 mb-2">
+                                    {/* Single Response Card */}
+                                    <div className="glass-card p-8 group hover:border-ai/30 transition-colors">
+                                        <div className="flex items-center gap-3 mb-6">
                                             <div className="p-2 bg-ai/10 rounded-lg">
                                                 <Brain className="text-ai w-5 h-5" />
                                             </div>
-                                            <h2 className="font-serif font-bold text-xl text-white">Agent Insights</h2>
+                                            <h2 className="font-serif font-bold text-xl text-white">Agent Response</h2>
                                         </div>
 
-                                        <div className="space-y-3">
-                                            <div className="p-4 bg-white/5 rounded-xl text-sm leading-relaxed border-l-2 border-primary">
-                                                <p className="text-text-secondary mb-2 text-xs uppercase tracking-wider font-bold">
-                                                    Source: <span className="text-white">{data.soft.source}</span>
-                                                </p>
-                                                <p className="text-slate-200 italic">
-                                                    "{data.soft.quote}"
-                                                </p>
-                                            </div>
-                                            <div className="p-4 bg-ai/5 rounded-xl text-sm leading-relaxed border-l-2 border-ai">
-                                                <p className="text-white font-medium">
-                                                    <span className="text-ai">Strategy:</span> {data.soft.strategy}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Zone 3: Future View (Interactive Chart) */}
-                                    <div className="glass-card p-6 md:col-span-1 lg:col-span-1 flex flex-col group hover:border-blue-500/30 transition-colors">
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <div className="p-2 bg-blue-500/10 rounded-lg">
-                                                <TrendingUp className="text-blue-400 w-5 h-5" />
-                                            </div>
-                                            <h2 className="font-serif font-bold text-xl text-white">Projection</h2>
+                                        <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white">
+                                            <ReactMarkdown>
+                                                {data.soft.strategy}
+                                            </ReactMarkdown>
                                         </div>
 
-                                        <div className="h-48 w-full mt-2">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart data={getChartData()}>
-                                                    <defs>
-                                                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3} />
-                                                            <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
-                                                        </linearGradient>
-                                                    </defs>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} vertical={false} />
-                                                    <XAxis dataKey="name" stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} dy={10} />
-                                                    <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                                                    <Tooltip
-                                                        contentStyle={{ backgroundColor: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)' }}
-                                                        itemStyle={{ color: '#fff' }}
-                                                    />
-                                                    <Area type="monotone" dataKey="value" stroke="#8B5CF6" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
-                                        </div>
-
-                                        <div className="mt-4">
-                                            <div className="flex justify-between text-xs text-text-secondary mb-3 font-mono">
-                                                <span>CONSERVATIVE</span>
-                                                <span className="text-ai">AGGRESSIVE ({riskLevel}%)</span>
+                                        <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <button className="text-xs text-text-secondary hover:text-white flex items-center gap-2 transition-colors">
+                                                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Wolfram_Language_Logo.svg/1200px-Wolfram_Language_Logo.svg.png" className="w-4 h-4 opacity-50 grayscale group-hover:grayscale-0 transition-all" alt="Wolfram" />
+                                                    Wolfram Alpha
+                                                </button>
+                                                <span className="text-white/20">|</span>
+                                                <span className="text-xs text-text-secondary flex items-center gap-1">
+                                                    <Zap className="w-3 h-3 text-ai" />
+                                                    Gemini 2.5 Flash
+                                                </span>
                                             </div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={riskLevel}
-                                                onChange={(e) => setRiskLevel(Number(e.target.value))}
-                                                className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-ai hover:accent-ai/80 transition-all"
-                                            />
+                                            <span className="text-xs font-mono text-primary">✓ Complete</span>
                                         </div>
                                     </div>
 
@@ -280,9 +198,21 @@ const Dashboard: React.FC = () => {
 
                 {/* --- Other Views --- */}
                 <div className="w-full">
+                    {activeTab === 'market' && (
+                        <div className="w-full max-w-7xl px-4 mt-8">
+                            <h2 className="text-2xl font-serif font-bold text-white mb-6">Market Intelligence</h2>
+                            <div className="glass-card p-8 text-center">
+                                <TrendingUp className="w-12 h-12 text-primary mx-auto mb-4" />
+                                <p className="text-slate-300 text-lg">
+                                    Stock Analysis is now integrated into the main <strong>Home</strong> search.
+                                    <br />
+                                    Try asking: <em>"Analyze AAPL"</em> or <em>"Compare NVDA vs AMD"</em>
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     {activeTab === 'vault' && <UploadZone />}
-                    {activeTab === 'market' && <StockView />}
-                    {activeTab === 'chat' && <ChatView />}
+                    {activeTab === 'chat' && <ChatView session={session} />}
                 </div>
 
             </div>
