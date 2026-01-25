@@ -1,7 +1,7 @@
 [project]
 name = "rosehack2026"
 version = "0.1.0"
-description = "Add your description here"
+description = "Financial Agent + RAG Pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,4 +9,21 @@ dependencies = [
     "openai-agents[litellm]>=0.7.0",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
+    "fastapi",
+    "uvicorn",
+    "chromadb",
+    "langchain",
+    "langchain-community",
+    "langchain-google-genai",
+    "pypdf",
+    "python-multipart",
+    "pydantic-settings",
+    "uvloop",
+    "httptools",
+    "presidio-analyzer",
+    "presidio-anonymizer",
+    "spacy",
+    "langgraph",
+    "tavily-python",
+    "langchain-groq",
 ]

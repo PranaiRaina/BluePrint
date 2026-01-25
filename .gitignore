@@ -1,11 +1,42 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
 build/
 dist/
 wheels/
 *.egg-info
+.installed.cfg
+*.egg
 
 # Virtual environments
 .venv
 .env
+env/
+venv/
+ENV/
+
+# Distribution / packaging
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+
+# ChromaDB
+chroma_db/
+chroma_data/
+
+# Uploads
+temp_uploads/
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
