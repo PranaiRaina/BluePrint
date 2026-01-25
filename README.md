@@ -84,30 +84,23 @@ This project followed a rigorous feature-branch workflow to ensure stability whi
 - **`persistent-memory-creation`**: Added SQLite-backed long-term memory to agents, allowing them to recall previous interactions across sessions.
 - **`feature/stock-agents`**: Developed the dedicated stock analysis swarm (Quant Agent + Researcher Agent).
 
-```mermaid
-graph TD
-    User[User (React UI)] <--> Auth[Supabase Auth]
-    User <--> API[FastAPI Gateway]
-    
-    API --> Manager[Manager Agent (Router)]
-    
-    subgraph "Agent Core"
-        Manager -->|Math?| Calc[Calc Agent (Wolfram)]
-        Manager -->|Docs?| RAG[RAG Pipeline]
-        Manager -->|Stocks?| Stock[Stock Agent Swarm]
-    end
-    
-    subgraph "Data & Privacy Layer"
-        RAG --> PII[Presidio Redaction]
-        PII --> Chroma[ChromaDB]
-        Stock --> Time[TimescaleDB]
-        Manager --> Mem[SQLite Memory]
-    end
-    
-    subgraph "External Integrations"
-        Stock --> Finn[Finnhub API]
-        Stock --> Tav[Tavily Search]
-    end
+```text
+[User (React UI)] <---> [Supabase Auth]
+       |
+       v
+[FastAPI Gateway]
+       |
+       v
+[Manager Agent (Router)] ----------------+--------------------------+
+       |                                 |                          |
+       v                                 v                          v
+[Calc Agent (Wolfram)]          [RAG Pipeline]             [Stock Agent Swarm]
+       |                                 |                          |
+       |                        (PII Redaction)             +-------+-------+
+       |                                 |                  |               |
+       v                                 v                  v               v
+(Wolfram Alpha API)                 [ChromaDB]         [Finnhub]        [Tavily]
+                                                      (TimescaleDB)
 ```
 
 ### Architecture Deep Dive
