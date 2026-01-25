@@ -94,13 +94,13 @@ This project followed a rigorous feature-branch workflow to ensure stability whi
 [Manager Agent (Router)] ----------------+--------------------------+
        |                                 |                          |
        v                                 v                          v
-[Calc Agent (Wolfram)]          [RAG Pipeline]             [Stock Agent Swarm]
+[Calc Agents (Wolfram)]          [RAG Pipeline]             [Stock Agent Swarm]
        |                                 |                          |
-       |                        (PII Redaction)             +-------+-------+
-       |                                 |                  |               |
-       v                                 v                  v               v
-(Wolfram Alpha API)                 [ChromaDB]         [Finnhub]        [Tavily]
-                                                      (TimescaleDB)
+       |                        (PII Redaction)             +-------+--------+
+       |                                 |                  |       |        |
+       v                                 v                  v       v        v
+(Wolfram LLM API)                 [ChromaDB]         [Finnhub]    [Quant] [Tavily]
+                                                 (TimescaleDB)    (Agent)  (Agent)
 ```
 
 ### Architecture Deep Dive
