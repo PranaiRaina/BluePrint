@@ -26,4 +26,5 @@ dependencies = [
     "langgraph",
     "tavily-python",
     "langchain-groq",
+    "pyjwt",
 ]

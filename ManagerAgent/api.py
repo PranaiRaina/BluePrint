@@ -8,7 +8,10 @@ import time
 from datetime import datetime, timedelta
 
 # Import ManagerAgent instead of CalcAgent
+# Import ManagerAgent instead of CalcAgent
 from ManagerAgent.router import manager_agent
+from fastapi import Depends
+from Auth.dependencies import get_current_user
 
 app = FastAPI(title="Financial Calculation Agent API")
 
@@ -109,11 +112,15 @@ async def health_check():
     return {"status": "ok", "service": "ManagerAgent"}
 
 @app.post("/v1/agent/calculate", response_model=AgentResponse)
-async def calculate(request: Request, body: AgentRequest):
+async def calculate(request: Request, body: AgentRequest, user: dict = Depends(get_current_user)):
     """
     Run the Manager Agent on a user query.
-    Protected by rate limiting and timeouts.
+    Protected by rate limiting, timeouts, and Authentication.
     """
+    # 0. Authenticate User (Dependency Injection)
+    # The 'user' variable now holds the decoded JWT payload
+    # user_id = user.get("sub") 
+    
     # 1. Check Rate Limit
     client_ip = request.client.host if request.client else "unknown"
     check_rate_limit(client_ip)
