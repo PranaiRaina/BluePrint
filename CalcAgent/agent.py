@@ -1,5 +1,6 @@
 """Financial Calculation Agent - Orchestrator with SubAgents as tools."""
 
+from datetime import datetime
 from agents import Agent
 
 from CalcAgent.config import MODEL
@@ -11,10 +12,18 @@ from CalcAgent.subagents import (
     budget_agent,
 )
 
+# Get current year for prompt context
+current_year = datetime.now().year
+
+# Format Orchestrator prompt with dynamic date
+orchestrator_instructions = ORCHESTRATOR_PROMPT.format(
+    current_year=current_year
+)
+
 # Create the orchestrator agent with subagents as tools
 orchestrator = Agent(
     name="FinancialCalculator",
-    instructions=ORCHESTRATOR_PROMPT,
+    instructions=orchestrator_instructions,
     tools=[
         tvm_agent.as_tool(
             tool_name="tvm_agent",
