@@ -1,46 +1,32 @@
-"""Financial Calculation Agent - Orchestrator with SubAgents as tools."""
+"""Financial Calculation Agent - Single Agent Architecture."""
 
 from datetime import datetime
-from agents import Agent
+from agents import Agent, function_tool
 
 from CalcAgent.config import MODEL
-from CalcAgent.prompts.prompts import ORCHESTRATOR_PROMPT
-from CalcAgent.subagents import (
-    tvm_agent,
-    investment_agent,
-    tax_agent,
-    budget_agent,
-)
+from CalcAgent.prompts.prompts import FINANCIAL_AGENT_PROMPT
+from CalcAgent.tools.wolfram import query_wolfram
 
-# Get current year for prompt context
-current_year = datetime.now().year
+# Create the function tool for Wolfram
+# In single-agent mode, we expose this directly to the main agent
+wolfram_tool = function_tool(query_wolfram)
 
-# Format Orchestrator prompt with dynamic date
-orchestrator_instructions = ORCHESTRATOR_PROMPT.format(
+# Get current date context
+now = datetime.now()
+current_date = now.strftime("%Y-%m-%d")
+current_year = now.year
+
+# Format system prompt with dynamic date
+agent_instructions = FINANCIAL_AGENT_PROMPT.format(
+    current_date=current_date,
     current_year=current_year
 )
 
-# Create the orchestrator agent with subagents as tools
+# Create the Single Financial Agent
+# We use the variable name 'orchestrator' so main.py doesn't need changes (it imports orchestrator)
 orchestrator = Agent(
-    name="FinancialCalculator",
-    instructions=orchestrator_instructions,
-    tools=[
-        tvm_agent.as_tool(
-            tool_name="tvm_agent",
-            tool_description="Time Value of Money specialist - handles future value, present value, and loan payment calculations. Returns structured result with answer, explanation, and formula.",
-        ),
-        investment_agent.as_tool(
-            tool_name="investment_agent", 
-            tool_description="Investment specialist - handles compound interest, ROI, and CAGR calculations. Returns structured result with answer, explanation, and formula.",
-        ),
-        tax_agent.as_tool(
-            tool_name="tax_agent",
-            tool_description="Tax specialist - handles federal income tax and tax bracket calculations. Returns structured result with answer, explanation, and formula.",
-        ),
-        budget_agent.as_tool(
-            tool_name="budget_agent",
-            tool_description="Budget specialist - handles savings projections and budget analysis. Returns structured result with answer, explanation, and formula.",
-        ),
-    ],
+    name="FinancialHelper",
+    instructions=agent_instructions,
+    tools=[wolfram_tool],  # Direct access to Wolfram, no sub-agents
     model=MODEL,
 )
