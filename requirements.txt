@@ -16,6 +16,7 @@ httptools
 presidio-analyzer
 presidio-anonymizer
 spacy
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 langgraph
 tavily-python
 langchain-groq
@@ -31,3 +32,4 @@ cvxpy
 finnhub-python
 langchain-tavily
 litellm>=1.0.0
+supabase
