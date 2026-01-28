@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 from litellm import acompletion
 from ManagerAgent.router_intelligence import IntentType
 from ManagerAgent.tools import perform_rag_search, ask_stock_analyst
-from CalcAgent.src.agent import financial_agent
+from CalcAgent.src.agent import financial_agent, general_agent
 from CalcAgent.src.utils import run_with_retry
 from ManagerAgent.prompts import ORCHESTRATOR_SYNTHESIS_PROMPT
 import os

@@ -164,7 +164,7 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
     """
     try:
         # 0. Authenticate User (Dependency Injection)
-        user_id = user.get("sub", "fallback-user-id")
+        user_id = user["sub"]
         
         # 3. Retrieve History
         history = get_chat_history(user_id, body.session_id)
@@ -251,7 +251,7 @@ async def upload_document(file: UploadFile = File(...), user: dict = Depends(get
     """
     Upload and ingest a PDF document into Supabase Storage and RAG system.
     """
-    user_id = user.get("sub", "fallback-user-id")
+    user_id = user["sub"]
     
     # 1. Validate File Type
     if not file.filename.endswith('.pdf'):
@@ -291,7 +291,7 @@ async def delete_document(filename: str, user: dict = Depends(get_current_user))
     """
     Delete a document from both Supabase Storage and vector database.
     """
-    user_id = user.get("sub", "fallback-user-id")
+    user_id = user["sub"]
     storage_path = f"{user_id}/{filename}"
 
     try:
@@ -313,7 +313,7 @@ async def list_documents(user: dict = Depends(get_current_user)):
     """
     List all uploaded documents from Supabase Storage.
     """
-    user_id = user.get("sub", "fallback-user-id")
+    user_id = user["sub"]
     try:
         # List files in the user's specific folder in the bucket
         res = supabase.storage.from_("rag-documents").list(path=user_id)
@@ -331,8 +331,9 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     Get chat history for a specific session.
     """
-    user_id = user.get("sub", "fallback-user-id")
+    user_id = user["sub"]
     return get_chat_history_json(user_id, session_id)
+    
 @app.get("/v1/agent/stock/{ticker}")
 async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)):
     """

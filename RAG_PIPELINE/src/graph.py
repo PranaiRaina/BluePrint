@@ -13,6 +13,7 @@ class GraphState(TypedDict):
     question: str
     generation: str
     documents: List[Document]
+    user_id: str
 
 
 # --- Initialization ---
@@ -45,38 +46,71 @@ def retrieve(state: GraphState):
     """
     print("---RETRIEVE---")
     question = state["question"]
-    user_id = state.get("user_id", "fallback-user-id") # Inject user_id from state
+    user_id = state.get("user_id")
     
+    # --- BROAD QUERY DETECTION ---
+    is_broad = any(word in question.lower() for word in ["summarize", "analyze", "overview", "everything", "my document"])
+    
+    # 2. Similarity Search
+    # If broad, use a VERY LOW threshold to ensure we get context
+    THRESHOLD = 0.15 if is_broad else 0.35
+    
+    print(f"RAG: Searching for user_id == {user_id} (Broad={is_broad})")
     vectorstore = get_vectorstore()
     
-    # Filter by Threshold and Scoping
-    results = vectorstore.similarity_search_with_relevance_scores(
-        question, 
-        k=4,
-        filter={"user_id": user_id} # CRITICAL: Scoping filter
-    )
-    
-    THRESHOLD = 0.35
+    # --- AGGRESSIVE RETRIEVAL FOR BROAD QUERIES ---
     documents = []
     
-    for doc, score in results:
-        print(f"Doc Score: {score}")
-        if score >= THRESHOLD:
-            documents.append(doc)
-        else:
-            print(f"Skipping low relevance doc (Score: {score})")
+    if is_broad:
+        print("--- BROAD QUERY DETECTED: Fetching user documents directly ---")
+        try:
+            # We fetch up to 15 recent chunks for this user regardless of semantic score
+            broad_results = vectorstore.get(
+                where={"user_id": user_id},
+                limit=15,
+                include=["documents", "metadatas"]
+            )
             
-    return {"documents": documents, "question": question}
+            if broad_results and broad_results['documents']:
+                from langchain_core.documents import Document
+                for i in range(len(broad_results['documents'])):
+                    documents.append(Document(
+                        page_content=broad_results['documents'][i],
+                        metadata=broad_results['metadatas'][i]
+                    ))
+                print(f"Direct retrieval found {len(documents)} context chunks.")
+        except Exception as e:
+            print(f"Direct Fetch Error: {e}")
+
+    # Fallback/Supplemental: Similarity Search
+    if len(documents) < 5:
+        results = vectorstore.similarity_search_with_relevance_scores(
+            question, 
+            k=10 if is_broad else 6,
+            filter={"user_id": user_id}
+        )
+        
+        for doc, score in results:
+            if score >= THRESHOLD:
+                # Avoid duplicates
+                if not any(d.page_content == doc.page_content for d in documents):
+                    documents.append(doc)
+            
+    return {"documents": documents, "question": question, "user_id": user_id}
 
 def grade_documents(state: GraphState):
     """
     Determines if the retrieved documents are relevant to the question.
-    If not, we will set a flag to run web search.
     """
     print("---CHECK RELEVANCE---")
-    question = state["question"]
+    question = state["question"].lower()
     documents = state["documents"]
     
+    # --- SUMMARIZATION/BROAD OVERRIDE ---
+    if any(word in question for word in ["summarize", "analyze", "overview", "what is in my", "tell me about my"]):
+        print(f"--- BROAD QUERY DETECTED: Auto-accepting {len(documents)} documents ---")
+        return {"documents": documents, "question": state["question"]}
+
     # Simple grader prompt
     system = """You are a grader assessing relevance of a retrieved document to a user question. 
     If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. 

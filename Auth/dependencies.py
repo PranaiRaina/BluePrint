@@ -15,6 +15,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         payload = verify_token(token)
         return payload
     except Exception as e:
-        print(f"Auth verification failed: {e}. FALLING BACK TO MOCK USER for RoseHacks.")
-        # FALLBACK: Return a mock user so the app works despite auth errors
-        return {"sub": "fallback-user-id", "email": "fallback@example.com", "aud": "authenticated"}
+        print(f"Auth verification failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

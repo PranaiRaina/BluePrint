@@ -49,18 +49,36 @@ def get_anonymizer():
 def remove_pii(text: str) -> str:
     """
     Redact sensitive PII from text using Microsoft Presidio.
+    Split into smaller blocks to prevent memory spikes/StreamReset.
     """
+    if not text:
+        return text
+        
     try:
         analyzer = get_analyzer()
         anonymizer = get_anonymizer()
         
-        # Analyze
-        results = analyzer.analyze(text=text, entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "US_SSN", "CREDIT_CARD"], language='en')
-        # Anonymize
-        anonymized_result = anonymizer.anonymize(text=text, analyzer_results=results)
-        return anonymized_result.text
+        # Process in 5000 character blocks to avoid memory/timeout issues
+        block_size = 5000
+        blocks = [text[i:i + block_size] for i in range(0, len(text), block_size)]
+        clean_blocks = []
+        
+        for i, block in enumerate(blocks):
+            # Analyze
+            results = analyzer.analyze(
+                text=block, 
+                entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "US_SSN", "CREDIT_CARD"], 
+                language='en'
+            )
+            # Anonymize
+            anonymized_result = anonymizer.anonymize(text=block, analyzer_results=results)
+            clean_blocks.append(anonymized_result.text)
+            
+        return "".join(clean_blocks)
+        
     except Exception as e:
         print(f"PII Redaction Warning: {e}")
+        # Fallback to original text if redaction fails, so user can still query
         return text
 
 # Initialize Chroma
