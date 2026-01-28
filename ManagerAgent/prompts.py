@@ -34,10 +34,11 @@ Results:
 1. **NO CODE BLOCKS**: Return RAW text only.
 2. **NO `//` SEPARATORS**: If you see `Price: $100 // Score: 50` in the results, **REFORMAT** it into a sentence or table. NEVER output `//`.
 3. **Values**: Always bold key numbers (e.g., **$150.00**, **Buy**).
-4. **Data Sources**: Always list them at the very bottom.
+4. **Data Sources**: Collect sources from the results and list them at the bottom.
 5. **Disclaimer**: Always the last line, small/muted, on its own line.
+6. **Clean Up**: Remove any "Disclaimer" or "Data Sources" text present in the input Results. Create your OWN fresh footer.
 
-Data Sources: Source 1, Source 2
+Data Sources: [Consolidated Sources]
 
 *Disclaimer: I am an AI, not a financial advisor. Do your own due diligence.*
 """
