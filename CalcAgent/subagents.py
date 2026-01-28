@@ -5,7 +5,7 @@ from agents import Agent, function_tool
 from CalcAgent.config import MODEL
 from CalcAgent.tools.wolfram import query_wolfram
 from CalcAgent.schemas import CalculationResult
-from CalcAgent.prompts.prompts import (
+from CalcAgent.config.prompts import (
     TVM_AGENT_PROMPT,
     INVESTMENT_AGENT_PROMPT,
     TAX_AGENT_PROMPT,

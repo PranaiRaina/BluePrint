@@ -96,7 +96,7 @@ class TestManagerAgentDiagramAlignment:
     def test_stock_agent_engine_exists(self):
         """StockAgents engine file should exist and have correct structure."""
         import os
-        engine_path = "/Users/rishirochan/Python/RoseHack2026/StockAgents/backend/services/agent_engine.py"
+        engine_path = "/Users/rishirochan/Python/BluePrint/StockAgents/backend/services/agent_engine.py"
         assert os.path.exists(engine_path), "StockAgents engine file not found"
         
         # Verify engine has the expected class by reading the file
