@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 from ManagerAgent.router import manager_agent
 from fastapi import Depends
 from Auth.dependencies import get_current_user
+from ManagerAgent.router_intelligence import classify_intent, IntentType
+from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
+
 
 app = FastAPI(title="Financial Calculation Agent API")
 
@@ -157,32 +160,37 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         # 3. Retrieve History
         history = get_chat_history(body.session_id)
         
-        # --- HARD BYPASS FOR STOCK QUERIES ---
-        # User requested absolutely NO manager interference for stock data.
-        # We detect intent manually and call the tool directly.
-        lower_query = body.query.lower()
-        stock_keywords = ["stock", "price", "buy", "sell", "compare", "analyze", "market", "nvda", "aapl", "tsla", "amd", "meta", "googl", "amzn", "msft"]
+        # --- SEMANTIC ROUTING ---
         
-        if any(kw in lower_query for kw in stock_keywords) and len(lower_query.split()) < 20:
-             print(f"Bypassing Manager Agent for stock query: {body.query}")
-             from ManagerAgent.tools import ask_stock_analyst
-             # Call tool directly
+        # 1. Analyze Intent
+        decision = await classify_intent(body.query)
+        print(f"Router Decision: {decision.intent} | Reason: {decision.reasoning}")
+
+        # 2. Route based on Intent
+        if decision.intent == IntentType.STOCK:
+             print(f"Routing to Stock Analyst: {body.query}")
              final_output = await ask_stock_analyst(body.query)
+        
+        elif decision.intent == IntentType.RAG:
+             print(f"Routing to RAG Search: {body.query}")
+             final_output = await perform_rag_search(body.query)
+             
         else:
-            # 4. Construct Contextual Query
-            # We assume the Agent isn't natively stateful here, so we inject history.
-            if history:
+             # CALCULATOR or GENERAL -> Send to Manager Agent for orchestration
+             print(f"Routing to Manager Agent: {body.query}")
+             
+             # 4. Construct Contextual Query for Manager
+             if history:
                 full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
-            else:
+             else:
                 full_query = body.query
 
-            # 5. Execution with Timeout (30s)
-            # Prevent runaway agent loops
-            result = await asyncio.wait_for(
-                Runner.run(manager_agent, full_query),
-                timeout=30.0
-            )
-            final_output = result.final_output
+             # 5. Execution with Timeout (30s)
+             result = await asyncio.wait_for(
+                 Runner.run(manager_agent, full_query),
+                 timeout=30.0
+             )
+             final_output = result.final_output
         
         # 6. Save Interaction to History
         save_chat_entry(body.session_id, "User", body.query)
