@@ -162,6 +162,33 @@ export const agentService = {
             console.error("Fetch History Error:", error);
             return [];
         }
+    },
+
+    /**
+     * Delete a document.
+     */
+    deleteDocument: async (filename: string, session: Session | null): Promise<boolean> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/documents/${filename}`, {
+                method: 'DELETE',
+                headers
+            });
+
+            if (!response.ok) {
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Delete Document Error:", error);
+            return false;
+        }
     }
 };
 

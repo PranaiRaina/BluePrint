@@ -272,6 +272,33 @@ async def upload_document(file: UploadFile = File(...), user: dict = Depends(get
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
+@app.delete("/v1/agent/documents/{filename}")
+async def delete_document(filename: str, user: dict = Depends(get_current_user)):
+    """
+    Delete a document from both disk and vector database.
+    """
+    # 1. Paths
+    upload_dir = "ManagerAgent/uploads"
+    file_path = f"{upload_dir}/{filename}"
+
+    try:
+        # 2. Delete from Vector DB
+        from RAG_PIPELINE.src.ingestion import delete_document_vectors
+        await delete_document_vectors(filename)
+
+        # 3. Delete from Disk
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            # Re-verify deletion
+            if os.path.exists(file_path):
+                 raise Exception("File deletion failed (permission error?)")
+                 
+        return {"status": "success", "message": f"Deleted {filename}"}
+
+    except Exception as e:
+        print(f"Deletion failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+
 @app.get("/v1/agent/documents")
 async def list_documents(user: dict = Depends(get_current_user)):
     """

@@ -154,3 +154,24 @@ async def process_pdf(file_path: str):
     except Exception as e:
         print(f"Error processing PDF: {e}")
         raise e
+
+async def delete_document_vectors(filename: str):
+    """
+    Delete all vectors associated with a specific filename using native ChromaDB client.
+    """
+    try:
+        # Use the global persistent client
+        collection = chroma_client.get_or_create_collection(name="rag_documents")
+        
+        print(f"Attrib: Deleting vectors where source == {filename}")
+        
+        # Native delete supports 'where' filter
+        collection.delete(where={"source": filename})
+        
+        print(f"Successfully deleted vectors for {filename}")
+        return True
+            
+    except Exception as e:
+        print(f"Error deleting vectors for {filename}: {e}")
+        # Don't raise, just return False so we can still delete the file
+        return False

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, CheckCircle, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, CheckCircle, FileText, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
 
@@ -72,6 +72,23 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
         }
     };
 
+    const handleDelete = async (filename: string) => {
+        if (!confirm(`Are you sure you want to delete ${filename}? This cannot be undone.`)) return;
+
+        try {
+            const success = await agentService.deleteDocument(filename, session);
+            if (success) {
+                // Remove from local list immediately for UI responsiveness
+                setUploadedFiles(prev => prev.filter(f => f !== filename));
+                // fetchDocuments(); // Optional: double check
+            } else {
+                setError("Failed to delete document.");
+            }
+        } catch (err) {
+            setError("Error deleting document.");
+        }
+    };
+
     return (
         <div className="w-full max-w-4xl mx-auto pt-10">
             <h1 className="text-3xl font-bold text-white mb-2">Data Vault</h1>
@@ -131,6 +148,13 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
                                 <FileText className="w-5 h-5 text-ai" />
                                 <span className="text-slate-200 text-sm">{fname}</span>
                                 <span className="ml-auto text-xs text-primary bg-primary/10 px-2 py-1 rounded">Ready</span>
+                                <button
+                                    onClick={() => handleDelete(fname)}
+                                    className="ml-3 p-1 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                                    title="Delete Document"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
                             </div>
                         ))}
                     </div>
