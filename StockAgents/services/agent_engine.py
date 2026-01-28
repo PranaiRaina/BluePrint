@@ -56,8 +56,13 @@ class LLMPlanner:
            - Returns: News summaries, sentiment analysis.
         """
         
-    async def create_plan(self, user_query: str) -> ExecutionPlan:
-        system_prompt = PLANNER_SYSTEM_PROMPT.format(tools_schema=self.tools_schema)
+    async def create_plan(self, user_query: str, user_context: Dict[str, Any] = {}) -> ExecutionPlan:
+        # Format prompt with tools AND user context
+        context_str = json.dumps(user_context, indent=2, default=str)
+        system_prompt = PLANNER_SYSTEM_PROMPT.format(
+            tools_schema=self.tools_schema,
+            user_context=context_str
+        )
         
         try:
             response = await self.client.chat.completions.create(
@@ -73,13 +78,8 @@ class LLMPlanner:
             return ExecutionPlan.model_validate_json(content)
         except Exception as e:
             print(f"Planning Error: {e}")
-            # Fallback Plan (assume simple stock check)
-            return ExecutionPlan(
-                reasoning="Fallback due to error",
-                steps=[
-                    PlannerStep(tool="news_research", args={"query": user_query}, description="Fallback search")
-                ]
-            )
+            # Surface error to user instead of silent fallback
+            raise ValueError(f"Unable to create execution plan: {str(e)}")
 
 class AgentEngine:
     def __init__(self):
@@ -91,7 +91,7 @@ class AgentEngine:
         Dynamic execution based on LLM Plan.
         """
         # 1. Plan
-        plan = await self.planner.create_plan(user_query)
+        plan = await self.planner.create_plan(user_query, user_context)
         print(f"Generated Plan: {plan.dict()}")
         
         # 2. Execute
@@ -107,7 +107,10 @@ class AgentEngine:
                         min_change_percent=step.args.get("min_change_percent", 0)
                     )
                 elif step.tool == "get_stock_data":
-                    ticker = step.args.get("ticker", "AAPL").upper()
+                    ticker = step.args.get("ticker")
+                    if not ticker:
+                        return {"error": "Missing ticker argument for get_stock_data"}
+                    ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
                     # Store chart data separately for frontend
@@ -116,10 +119,13 @@ class AgentEngine:
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
-                    return await quant_agent(step.args.get("ticker", "AAPL"))
+                    ticker = step.args.get("ticker")
+                    if not ticker:
+                        return {"error": "Missing ticker argument for quant_analysis"}
+                    return await quant_agent.run(ticker)
                 elif step.tool == "news_research":
                     from .researcher_agent import researcher_agent
-                    return await researcher_agent(step.args.get("query", user_query))
+                    return await researcher_agent.run(step.args.get("query", user_query))
                 else:
                     return {"error": f"Unknown tool: {step.tool}"}
             except Exception as e:
@@ -131,7 +137,7 @@ class AgentEngine:
             execution_results[f"step_{i}_{step.tool}"] = result
         
         # 3. Synthesize
-        recommendation = await self._generate_recommendation(user_query, plan, execution_results)
+        recommendation = await self._generate_recommendation(user_query, plan, execution_results, user_context)
         
         return {
             "intent": "dynamic_plan",
@@ -143,13 +149,14 @@ class AgentEngine:
             "recommendation": recommendation
         }
 
-    async def _generate_recommendation(self, query: str, plan: ExecutionPlan, results: Dict) -> str:
+    async def _generate_recommendation(self, query: str, plan: ExecutionPlan, results: Dict, user_context: Dict[str, Any] = {}) -> str:
         """
         Synthesize results into a final answer.
         """
         from datetime import datetime
         
         context_str = json.dumps(results, indent=2, default=str)
+        user_context_str = json.dumps(user_context, indent=2, default=str)
         plan_str = json.dumps(plan.dict(), indent=2)
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -160,6 +167,9 @@ class AgentEngine:
         Current Date: {current_date}
         User Query: {query}
         
+        User Portfolio Context:
+        {user_context_str}
+        
         Execution Plan:
         {plan_str}
         
@@ -167,8 +177,9 @@ class AgentEngine:
         {context_str}
         
         Instructions:
-        1. Answer the user's question directly.
-        2. Use the data from Tool Outputs to back up your claims.
+        1. **PRIORITY**: If the user asks about their holdings (e.g., "how many", "do I own"), YOU MUST answer that first using the 'User Portfolio Context'.
+        2. Answer the user's question directly.
+        3. Use the data from Tool Outputs to back up your claims.
         3. If multiple stocks were analyzed, provide a comparison.
         4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
         5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.

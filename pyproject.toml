@@ -40,6 +40,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "litellm>=1.0.0",
     "supabase>=2.27.2",
+    "wolframclient>=1.4.0",
 ]
 
 [dependency-groups]
