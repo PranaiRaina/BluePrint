@@ -39,6 +39,7 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "passlib[bcrypt]>=1.7.4",
     "litellm>=1.0.0",
+    "wolframclient>=1.4.0",
 ]
 
 [dependency-groups]

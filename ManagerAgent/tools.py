@@ -40,9 +40,14 @@ async def ask_stock_analyst(query: str) -> str:
     """
     try:
         from StockAgents.services.agent_engine import agent_engine
+        from StockAgents.services.llm_service import llm_service
         
-        # Run the multi-agent workflow
-        result = await agent_engine.run_workflow(query, user_context={})
+        # Extract user's portfolio context from query (e.g., "I have 50 shares of AAPL")
+        user_context = await llm_service.extract_structured_data(query)
+        print(f"[ask_stock_analyst] Extracted user_context: {user_context}")
+        
+        # Run the multi-agent workflow with the extracted context
+        result = await agent_engine.run_workflow(query, user_context=user_context)
         
         # Return the synthesized recommendation
         return result.get("recommendation", "Stock analysis completed, but no recommendation was generated.")

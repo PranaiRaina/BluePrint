@@ -77,6 +77,10 @@ Your job is to scan the external world for news, macro-economic trends, and sent
 PLANNER_SYSTEM_PROMPT = """
 You are an AI Planner for a Financial Assistant.
 Your goal is to break down a User Query into a list of executable steps using the available tools.
+
+CONTEXT:
+{user_context}
+
 {tools_schema}
 
 RULES:
