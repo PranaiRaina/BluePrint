@@ -13,8 +13,8 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 WOLFRAM_APP_ID = os.getenv("WOLFRAM_APP_ID")
 
-# Wolfram Alpha LLM API endpoint
-WOLFRAM_API_URL = "https://www.wolframalpha.com/api/v1/llm-api"
+# Wolfram Alpha Full Results API endpoint
+WOLFRAM_API_URL = "https://api.wolframalpha.com/v2/query"
 
 # Configure Gemini client (OpenAI Compatible)
 # Docs: https://ai.google.dev/gemini-api/docs/openai

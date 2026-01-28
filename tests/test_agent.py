@@ -46,7 +46,7 @@ async def test_wolfram_api():
 async def test_agent(name: str, query: str):
     """Test a single query through the agent."""
     from agents import Runner
-    from CalcAgent.agent import financial_agent
+    from CalcAgent.src.agent import financial_agent
     
     print(f"\n--- Test: {name} ---")
     

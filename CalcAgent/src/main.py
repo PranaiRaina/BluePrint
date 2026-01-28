@@ -1,8 +1,8 @@
 """CLI entry point for the Financial Calculation Agent."""
 
 import asyncio
-from CalcAgent.agent import financial_agent
-from CalcAgent.config.utils import run_with_retry
+from CalcAgent.src.agent import financial_agent
+from CalcAgent.src.utils import run_with_retry
 
 
 async def main():

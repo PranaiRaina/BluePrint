@@ -2,17 +2,21 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock, MagicMock
 from ManagerAgent.api import app
-from ManagerAgent.router import manager_agent
-from CalcAgent.agent import financial_agent
+# ManagerAgent.router is deleted, removing import
+from CalcAgent.src.agent import financial_agent
 import asyncio
 import json
 
 # Initialize TestClient
 client = TestClient(app)
 
-# Override auth dependency
-from Auth.dependencies import get_current_user
-app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email": "test@example.com"}
+# Override auth dependency in fixture
+@pytest.fixture(autouse=True)
+def override_auth():
+    from Auth.dependencies import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email": "test@example.com"}
+    yield
+    app.dependency_overrides = {}
 
 
 # =============================================================================
@@ -44,26 +48,7 @@ def test_api_rate_limit_headers():
 # 2. Router Logic Tests (Manager Agent)
 # =============================================================================
 
-@pytest.mark.asyncio
-async def test_manager_routes_to_calc():
-    """
-    Test that 'Calculate mortgage' routes to FinancialCalculator handoff.
-    We test this by mocking the LLM's decision or checking tool calls.
-    Since we can't easily mock the Groq LLM decision deterministically without VCR,
-    we will rely on the System Prompt logic check or integration test.
-    
-    For this 'Rigorous' test, we will act as the Agent framework and verify
-    that the system prompt contains the correct instructions.
-    """
-    instructions = manager_agent.instructions
-    assert "Financial Calculator (Handoff)" in instructions
-    assert "Document Analysis (Tool)" in instructions
-    
-    # Verify tools are attached
-    tool_names = [t.name for t in manager_agent.tools]
-    # Handoffs in openai-agents might not appear in .tools list directly depending on version,
-    # but tools should definitely include 'perform_rag_search'
-    assert "perform_rag_search" in str(manager_agent.tools) or "perform_rag_search" in tool_names
+# Tests for deleted manager_agent are removed
 
 @pytest.mark.asyncio
 async def test_rag_tool_wrapper_handles_search():
@@ -115,33 +100,10 @@ def test_api_success_flow(mock_run):
     assert data["status"] == "success"
     assert data["final_output"] == "Mortgage payment is $1,200."
     
-    # Verify Runner was called with manager_agent
+    # Verify Runner was called with financial_agent (since Calculator intent)
     mock_run.assert_awaited_once()
     args = mock_run.call_args
-    assert args[0][0].name == "ManagerAgent" # First arg is agent
+    assert args[0][0].name == "FinancialCalculator" # First arg is agent
     assert args[0][1] == "Calculate mortgage" # Second arg is query
 
-@patch("ManagerAgent.router.Runner.run", new_callable=AsyncMock)
-@pytest.mark.asyncio
-async def test_financial_tool_wrapper(mock_run):
-    """
-    Test the explicit tool wrapper 'ask_financial_calculator'.
-    It should call Runner.run(financial_agent, query) and return final_output.
-    """
-    from ManagerAgent.router import ask_financial_calculator, financial_agent
-    
-    # Mock result
-    mock_result = MagicMock()
-    mock_result.final_output = "Computed: $500"
-    mock_run.return_value = mock_result
-    
-    # Call wrapper
-    result = await ask_financial_calculator("Test query")
-    
-    # Assertions
-    assert result == "Computed: $500"
-    # Check that it called Runner with the financial_agent, NOT manager_agent
-    mock_run.assert_awaited_once()
-    args = mock_run.call_args
-    assert args[0][0] == financial_agent
-    assert args[0][1] == "Test query"
+# Obsolete wrapper tests removed

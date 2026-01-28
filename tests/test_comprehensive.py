@@ -3,8 +3,8 @@
 import unittest
 import asyncio
 import time
-from CalcAgent.agent import financial_agent
-from CalcAgent.config.utils import run_with_retry
+from CalcAgent.src.agent import financial_agent
+from CalcAgent.src.utils import run_with_retry
 
 # Define test cases (Query, Expected Keywords/Values)
 # NOTE: Using math-style queries to avoid Wolfram LLM API rate limits on natural language

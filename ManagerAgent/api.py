@@ -3,17 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from agents import Runner
+from CalcAgent.src.utils import run_with_retry
 import asyncio
 import time
 from datetime import datetime, timedelta
 
-# Import ManagerAgent instead of CalcAgent
-# Import ManagerAgent instead of CalcAgent
-from ManagerAgent.router import manager_agent
+# Import GeneralAgent for fallback
+from CalcAgent.src.agent import financial_agent, general_agent
 from fastapi import Depends
 from Auth.dependencies import get_current_user
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
+from ManagerAgent.orchestrator import orchestrate
 
 
 app = FastAPI(title="Financial Calculation Agent API")
@@ -160,34 +161,58 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         # 3. Retrieve History
         history = get_chat_history(body.session_id)
         
-        # --- SEMANTIC ROUTING ---
+        # --- MULTI-INTENT ROUTING ---
         
-        # 1. Analyze Intent
+        # 1. Analyze Intent(s)
         decision = await classify_intent(body.query)
-        print(f"Router Decision: {decision.intent} | Reason: {decision.reasoning}")
+        print(f"Router Decision: {decision.intents} | Primary: {decision.primary_intent} | Reason: {decision.reasoning}")
 
-        # 2. Route based on Intent
-        if decision.intent == IntentType.STOCK:
+        # 2. Route based on Intent(s)
+        if len(decision.intents) > 1:
+            # Multi-intent query - use orchestrator
+            print(f"Multi-Intent Detected: {[i.value for i in decision.intents]}")
+            final_output = await asyncio.wait_for(
+                orchestrate(body.query, decision.intents),
+                timeout=60.0  # Longer timeout for multi-step
+            )
+        
+        elif decision.primary_intent == IntentType.STOCK:
              print(f"Routing to Stock Analyst: {body.query}")
              final_output = await ask_stock_analyst(body.query)
         
-        elif decision.intent == IntentType.RAG:
+        elif decision.primary_intent == IntentType.RAG:
              print(f"Routing to RAG Search: {body.query}")
              final_output = await perform_rag_search(body.query)
+
+        elif decision.primary_intent == IntentType.CALCULATOR:
+             print(f"Routing to Financial Calculator (Direct): {body.query}")
              
-        else:
-             # CALCULATOR or GENERAL -> Send to Manager Agent for orchestration
-             print(f"Routing to Manager Agent: {body.query}")
-             
-             # 4. Construct Contextual Query for Manager
+             # Construct Contextual Query for Financial Agent
              if history:
                 full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
              else:
                 full_query = body.query
 
-             # 5. Execution with Timeout (30s)
+             # Direct routing to Financial Agent
              result = await asyncio.wait_for(
-                 Runner.run(manager_agent, full_query),
+                 run_with_retry(financial_agent, full_query),
+                 timeout=30.0
+             )
+             final_output = result.final_output
+             
+        else:
+             # GENERAL -> Send to General Agent for conversation
+             print(f"Routing to General Agent: {body.query}")
+             
+             # Construct Contextual Query for General Agent
+             if history:
+                full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+             else:
+                full_query = body.query
+
+             # Execution with Timeout (30s)
+             result = await asyncio.wait_for(
+                 run_with_retry(general_agent, full_query),
                  timeout=30.0
              )
              final_output = result.final_output

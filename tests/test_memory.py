@@ -14,11 +14,20 @@ app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email
 
 # Ensure fresh DB for tests
 @pytest.fixture(autouse=True)
-def setup_db():
+def setup_db_and_auth():
+    # Setup DB
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
     init_db()
+    
+    # Override Auth
+    from Auth.dependencies import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user", "email": "test@example.com"}
+    
     yield
+    
+    # Cleanup
+    app.dependency_overrides = {}
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
 

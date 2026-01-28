@@ -52,3 +52,37 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Custom Prose Spacing for Agent Responses */
+.prose p {
+  margin-bottom: 1.25em;
+}
+
+.prose p + p {
+  margin-top: 1.25em;
+}
+
+.prose strong {
+  color: #a78bfa; /* primary/violet color */
+}
+
+.prose em {
+  color: #94a3b8; /* smaller/muted for disclaimers */
+  font-size: 0.9em;
+}
+
+/* Section headers styling */
+.prose h1, .prose h2, .prose h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+/* Lists need spacing too */
+.prose ol, .prose ul {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.prose li {
+  margin-bottom: 0.5em;
+}

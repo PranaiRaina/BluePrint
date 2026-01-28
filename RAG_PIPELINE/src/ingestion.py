@@ -69,7 +69,7 @@ chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
 # Vector Store Wrapper
 def get_vectorstore():
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=settings.GOOGLE_API_KEY)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=settings.GOOGLE_API_KEY)
     return Chroma(
         client=chroma_client,
         collection_name="rag_documents",
