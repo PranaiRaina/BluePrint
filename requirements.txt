@@ -31,3 +31,4 @@ cvxpy
 finnhub-python
 langchain-tavily
 litellm>=1.0.0
+supabase

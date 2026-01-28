@@ -155,23 +155,86 @@ async def process_pdf(file_path: str):
         print(f"Error processing PDF: {e}")
         raise e
 
-async def delete_document_vectors(filename: str):
+async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
     """
-    Delete all vectors associated with a specific filename using native ChromaDB client.
+    Ingest a PDF from memory: Hash -> Check Duplicate (scoped) -> Load -> PII Clean -> Summary -> Chunk -> Embed -> Store (scoped)
     """
     try:
-        # Use the global persistent client
-        collection = chroma_client.get_or_create_collection(name="rag_documents")
+        # 0. HASHING (Duplicate Check)
+        file_hash = hashlib.sha256(file_content).hexdigest()
         
-        print(f"Attrib: Deleting vectors where source == {filename}")
+        vectorstore = get_vectorstore()
         
-        # Native delete supports 'where' filter
-        collection.delete(where={"source": filename})
+        # Check if hash exists in metadata FOR THIS USER
+        existing = vectorstore.get(where={"$and": [{"file_hash": file_hash}, {"user_id": user_id}]})
+        if existing and existing['ids']:
+            return f"Duplicate detected for user. {filename} already indexed."
+
+        # 1. Load (from memory using a temp file for PyPDFLoader)
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(file_content)
+            tmp_path = tmp.name
         
-        print(f"Successfully deleted vectors for {filename}")
-        return True
+        try:
+            loader = PyPDFLoader(tmp_path)
+            documents = loader.load()
+            full_text = "\n".join([doc.page_content for doc in documents])
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        
+        # 2. PII Cleaning
+        clean_text = remove_pii(full_text)
+        
+        # 3. Global Summary
+        summary = await generate_summary(clean_text)
+        
+        # 4. Contextual Chunking
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        raw_chunks = text_splitter.split_text(clean_text)
+        
+        # Add Context to chunks
+        contextual_chunks = []
+        metadatas = []
+        
+        for i, chunk in enumerate(raw_chunks):
+            augmented_text = f"Document: {filename}\nGlobal Summary: {summary}\n\nContent: {chunk}"
             
+            contextual_chunks.append(augmented_text)
+            metadatas.append({
+                "file_hash": file_hash,
+                "source": filename,
+                "user_id": user_id,  # CRITICAL: Scoping
+                "chunk_index": i,
+                "summary": summary
+            })
+        
+        if not contextual_chunks:
+            return "No text found in PDF."
+
+        # 5. Embed & Store
+        vectorstore.add_texts(texts=contextual_chunks, metadatas=metadatas)
+        
+        return f"Successfully processed {len(contextual_chunks)} chunks for {filename}"
+    
     except Exception as e:
-        print(f"Error deleting vectors for {filename}: {e}")
-        # Don't raise, just return False so we can still delete the file
+        print(f"Error in scoped processing: {e}")
+        raise e
+
+async def delete_document_vectors_scoped(filename: str, user_id: str):
+    """
+    Delete all vectors associated with a specific filename and user_id.
+    """
+    try:
+        collection = chroma_client.get_or_create_collection(name="rag_documents")
+        print(f"RAG: Deleting vectors where source == {filename} AND user_id == {user_id}")
+        
+        # Scoped deletion
+        collection.delete(where={"$and": [{"source": filename}, {"user_id": user_id}]})
+        
+        print(f"Successfully deleted vectors for {filename} (User: {user_id})")
+        return True
+    except Exception as e:
+        print(f"Error deleting scoped vectors: {e}")
         return False

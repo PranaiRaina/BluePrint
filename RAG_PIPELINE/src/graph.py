@@ -45,11 +45,17 @@ def retrieve(state: GraphState):
     """
     print("---RETRIEVE---")
     question = state["question"]
+    user_id = state.get("user_id", "fallback-user-id") # Inject user_id from state
+    
     vectorstore = get_vectorstore()
     
-    results = vectorstore.similarity_search_with_relevance_scores(question, k=4)
+    # Filter by Threshold and Scoping
+    results = vectorstore.similarity_search_with_relevance_scores(
+        question, 
+        k=4,
+        filter={"user_id": user_id} # CRITICAL: Scoping filter
+    )
     
-    # Filter by Threshold
     THRESHOLD = 0.35
     documents = []
     

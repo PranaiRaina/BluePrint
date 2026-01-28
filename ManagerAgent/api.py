@@ -1,3 +1,5 @@
+import os
+import shutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,6 +17,7 @@ from Auth.dependencies import get_current_user
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate
+from supabase import create_client, Client
 
 
 app = FastAPI(title="Financial Calculation Agent API")
@@ -56,34 +59,48 @@ import json
 # --- Database Setup ---
 DB_PATH = "chat_history.db"
 
+# Initialize Supabase client for storage
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_JWT_SECRET"))
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    
+    # Check if user_id column exists, if not, add it (Migration)
+    cursor.execute("PRAGMA table_info(chat_history)")
+    columns = [row[1] for row in cursor.fetchall()]
+    
+    if not columns:
+        cursor.execute("""
+            CREATE TABLE chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    elif "user_id" not in columns:
+        print("  → Migrating DB: Adding user_id column")
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'fallback-user-id'")
+        
     conn.commit()
     conn.close()
 
 # Initialize DB immediately
 init_db()
 
-def get_chat_history(session_id: str, limit: int = 10) -> str:
-    """Retrieve recent chat history for a session formatted as text."""
+def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
+    """Retrieve recent chat history for a session formatted as text, scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT role, content FROM chat_history 
-        WHERE session_id = ? 
+        WHERE user_id = ? AND session_id = ? 
         ORDER BY timestamp DESC 
         LIMIT ?
-    """, (session_id, limit))
+    """, (user_id, session_id, limit))
     rows = cursor.fetchall()
     conn.close()
     
@@ -92,16 +109,16 @@ def get_chat_history(session_id: str, limit: int = 10) -> str:
     formatted_history = "\n".join([f"{role}: {content}" for role, content in history])
     return formatted_history
 
-def get_chat_history_json(session_id: str, limit: int = 50) -> List[dict]:
-    """Retrieve recent chat history for a session formatted as JSON list."""
+def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> List[dict]:
+    """Retrieve recent chat history for a session formatted as JSON list, scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT role, content FROM chat_history 
-        WHERE session_id = ? 
+        WHERE user_id = ? AND session_id = ? 
         ORDER BY timestamp DESC 
         LIMIT ?
-    """, (session_id, limit))
+    """, (user_id, session_id, limit))
     rows = cursor.fetchall()
     conn.close()
     
@@ -116,12 +133,12 @@ def get_chat_history_json(session_id: str, limit: int = 50) -> List[dict]:
         
     return formatted_history
 
-def save_chat_entry(session_id: str, role: str, content: str):
-    """Save a single chat entry."""
+def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
+    """Save a single chat entry scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)", 
-                   (session_id, role, content))
+    cursor.execute("INSERT INTO chat_history (user_id, session_id, role, content) VALUES (?, ?, ?, ?)", 
+                   (user_id, session_id, role, content))
     conn.commit()
     conn.close()
 
@@ -145,21 +162,12 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
     Run the Manager Agent on a user query.
     Protected by rate limiting, timeouts, and Authentication.
     """
-    # 0. Authenticate User (Dependency Injection)
-    # The 'user' variable now holds the decoded JWT payload
-    # user_id = user.get("sub") 
-    
-    # 1. Check Rate Limit
-    client_ip = request.client.host if request.client else "unknown"
-    check_rate_limit(client_ip)
-    
-    # 2. Input Sanity Check
-    if len(body.query) > 1000:
-        raise HTTPException(status_code=400, detail="Query too long (max 1000 chars)")
-
     try:
+        # 0. Authenticate User (Dependency Injection)
+        user_id = user.get("sub", "fallback-user-id")
+        
         # 3. Retrieve History
-        history = get_chat_history(body.session_id)
+        history = get_chat_history(user_id, body.session_id)
         
         # --- MULTI-INTENT ROUTING ---
         
@@ -172,7 +180,7 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
             # Multi-intent query - use orchestrator
             print(f"Multi-Intent Detected: {[i.value for i in decision.intents]}")
             final_output = await asyncio.wait_for(
-                orchestrate(body.query, decision.intents),
+                orchestrate(body.query, decision.intents, user_id=user_id, history=history),
                 timeout=60.0  # Longer timeout for multi-step
             )
         
@@ -182,7 +190,7 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         
         elif decision.primary_intent == IntentType.RAG:
              print(f"Routing to RAG Search: {body.query}")
-             final_output = await perform_rag_search(body.query)
+             final_output = await perform_rag_search(body.query, user_id=user_id)
 
         elif decision.primary_intent == IntentType.CALCULATOR:
              print(f"Routing to Financial Calculator (Direct): {body.query}")
@@ -218,8 +226,8 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
              final_output = result.final_output
         
         # 6. Save Interaction to History
-        save_chat_entry(body.session_id, "User", body.query)
-        save_chat_entry(body.session_id, "Agent", final_output)
+        save_chat_entry(user_id, body.session_id, "User", body.query)
+        save_chat_entry(user_id, body.session_id, "Agent", final_output)
         
         return AgentResponse(
             final_output=final_output,
@@ -241,28 +249,34 @@ import os
 @app.post("/v1/agent/upload")
 async def upload_document(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     """
-    Upload and ingest a PDF document into the RAG system.
+    Upload and ingest a PDF document into Supabase Storage and RAG system.
     """
+    user_id = user.get("sub", "fallback-user-id")
+    
     # 1. Validate File Type
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are currently supported.")
 
-    # 2. Save to Temp
-    upload_dir = "ManagerAgent/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = f"{upload_dir}/{file.filename}"
-    
+    # 2. Upload to Supabase Storage
+    # Path: {user_id}/{filename}
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # 3. Process with Ingestion Pipeline
-        from RAG_PIPELINE.src.ingestion import process_pdf
+        file_content = await file.read()
+        storage_path = f"{user_id}/{file.filename}"
         
-        result = await process_pdf(file_path)
+        # Check if bucket exists/create logic is handled in Dashboard, 
+        # but here we just upload to 'rag-documents' bucket
+        res = supabase.storage.from_("rag-documents").upload(
+            path=storage_path,
+            file=file_content,
+            file_options={"upsert": "true"}
+        )
         
-        # 4. Clean up (Optional - maybe keep for debug?)
-        # os.remove(file_path) 
+        # 3. Process with Ingestion Pipeline for RAG
+        # Note: process_pdf currently expects a local path. 
+        # Refactoring ingestion.py to accept user_id and content/path.
+        from RAG_PIPELINE.src.ingestion import process_pdf_scoped
+        
+        result = await process_pdf_scoped(file.filename, file_content, user_id)
         
         return {"status": "success", "message": result, "filename": file.filename}
         
@@ -270,28 +284,23 @@ async def upload_document(file: UploadFile = File(...), user: dict = Depends(get
         print(f"Upload failed: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload/Ingestion failed: {str(e)}")
 
 @app.delete("/v1/agent/documents/{filename}")
 async def delete_document(filename: str, user: dict = Depends(get_current_user)):
     """
-    Delete a document from both disk and vector database.
+    Delete a document from both Supabase Storage and vector database.
     """
-    # 1. Paths
-    upload_dir = "ManagerAgent/uploads"
-    file_path = f"{upload_dir}/{filename}"
+    user_id = user.get("sub", "fallback-user-id")
+    storage_path = f"{user_id}/{filename}"
 
     try:
-        # 2. Delete from Vector DB
-        from RAG_PIPELINE.src.ingestion import delete_document_vectors
-        await delete_document_vectors(filename)
+        # 1. Delete from Vector DB
+        from RAG_PIPELINE.src.ingestion import delete_document_vectors_scoped
+        await delete_document_vectors_scoped(filename, user_id)
 
-        # 3. Delete from Disk
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            # Re-verify deletion
-            if os.path.exists(file_path):
-                 raise Exception("File deletion failed (permission error?)")
+        # 2. Delete from Supabase Storage
+        supabase.storage.from_("rag-documents").remove([storage_path])
                  
         return {"status": "success", "message": f"Deleted {filename}"}
 
@@ -302,20 +311,19 @@ async def delete_document(filename: str, user: dict = Depends(get_current_user))
 @app.get("/v1/agent/documents")
 async def list_documents(user: dict = Depends(get_current_user)):
     """
-    List all uploaded documents.
+    List all uploaded documents from Supabase Storage.
     """
-    upload_dir = "ManagerAgent/uploads"
+    user_id = user.get("sub", "fallback-user-id")
     try:
-        if not os.path.exists(upload_dir):
-            return {"documents": []}
-            
-        files = [f for f in os.listdir(upload_dir) if f.endswith('.pdf')]
-        # Sort by modification time (newest first)
-        files.sort(key=lambda x: os.path.getmtime(os.path.join(upload_dir, x)), reverse=True)
+        # List files in the user's specific folder in the bucket
+        res = supabase.storage.from_("rag-documents").list(path=user_id)
+        
+        # Supabase returns a list of file info objects
+        files = [f['name'] for f in res if f['name'].endswith('.pdf')]
+        
         return {"documents": files}
     except Exception as e:
         print(f"Error listing documents: {e}")
-        return {"documents": []}
         return {"documents": []}
 
 @app.get("/v1/agent/history")
@@ -323,7 +331,8 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     Get chat history for a specific session.
     """
-    return get_chat_history_json(session_id)
+    user_id = user.get("sub", "fallback-user-id")
+    return get_chat_history_json(user_id, session_id)
 @app.get("/v1/agent/stock/{ticker}")
 async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)):
     """

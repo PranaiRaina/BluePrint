@@ -39,6 +39,7 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "passlib[bcrypt]>=1.7.4",
     "litellm>=1.0.0",
+    "supabase>=2.27.2",
 ]
 
 [dependency-groups]

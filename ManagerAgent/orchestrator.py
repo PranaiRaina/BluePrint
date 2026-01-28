@@ -62,10 +62,10 @@ def enrich_query_with_context(query: str, context: Dict[str, Any]) -> str:
     return f"{chr(10).join(context_parts)}\n\nUser's Question: {query}\n\nIMPORTANT: Consider the user's current holdings when making recommendations."
 
 
-async def synthesize_response(query: str, results: Dict[str, str]) -> str:
-    """Use LLM to combine multiple agent results into one coherent, well-formatted response."""
+async def synthesize_response(query: str, results: Dict[str, str], history: str = "") -> str:
+    """Use LLM to combine multiple agent results into one coherent response with chat history context."""
     
-    if len(results) == 1:
+    if len(results) == 1 and not history:
         return list(results.values())[0]
     
     results_text = "\n\n".join([
@@ -74,8 +74,24 @@ async def synthesize_response(query: str, results: Dict[str, str]) -> str:
         if result
     ])
     
-    
-    prompt = ORCHESTRATOR_SYNTHESIS_PROMPT.format(query=query, results_text=results_text)
+    prompt = f"""You are a Master Financial Orchestrator. 
+Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
+
+CHAT HISTORY (for context):
+{history}
+
+USER QUERY: {query}
+
+AGENT FINDINGS:
+{results_text}
+
+INSTRUCTIONS:
+- Integrate the findings logically.
+- If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
+- Maintain a helpful, analytical tone.
+- Do not repeat yourself.
+- Ensure the final output is formatted in clean Markdown.
+"""
     
     try:
         response = await acompletion(
@@ -87,45 +103,57 @@ async def synthesize_response(query: str, results: Dict[str, str]) -> str:
         return f"{results_text}\n\n(Synthesis failed: {str(e)})"
 
 
-async def orchestrate(query: str, intents: List[IntentType]) -> str:
+async def orchestrate(query: str, intents: List[IntentType], user_id: str = "fallback-user-id", history: str = "") -> str:
     """
     Execute multiple intents in order, passing context between them,
-    and synthesize a final response.
+    and synthesize a final response. Scoped by user_id and aware of chat history.
     """
     context = {"query": query, "results": {}}
     
-    # Skip RAG if no documents uploaded
-    if IntentType.RAG in intents and not has_uploaded_documents():
-        print("  → Skipping RAG (no documents uploaded)")
-        intents = [i for i in intents if i != IntentType.RAG]
-        if not intents:
-            return "I'd like to analyze your portfolio, but you haven't uploaded any documents yet. Please upload your financial statements first."
-    
+    # Execution Order: RAG -> STOCK -> CALCULATOR -> GENERAL
+    ORDER_PRIORITY = {
+        IntentType.RAG: 0,
+        IntentType.STOCK: 1,
+        IntentType.CALCULATOR: 2,
+        IntentType.GENERAL: 3
+    }
+    intents.sort(key=lambda x: ORDER_PRIORITY.get(x, 99))
+
     print(f"Orchestrator: Executing {len(intents)} intents: {[i.value for i in intents]}")
     
     for intent in intents:
         print(f"  → Executing: {intent.value}")
         
         if intent == IntentType.RAG:
-            result = await perform_rag_search(query)
+            result = await perform_rag_search(query, user_id=user_id)
             context["results"]["rag"] = result
             print(f"    RAG Result: {result[:100]}..." if len(result) > 100 else f"    RAG Result: {result}")
         
         elif intent == IntentType.STOCK:
             enriched_query = enrich_query_with_context(query, context)
+            # Add history to enriched query
+            if history:
+                 enriched_query = f"Conversation History:\n{history}\n\n{enriched_query}"
+            
             result = await ask_stock_analyst(enriched_query)
             context["results"]["stock"] = result
             print(f"    Stock Result: {result[:100]}..." if len(result) > 100 else f"    Stock Result: {result}")
         
         elif intent == IntentType.CALCULATOR:
-            result = await run_calculator(query, context)
+            # Construct enriched context for calculator
+            calc_context = {"results": context["results"]}
+            result = await run_calculator(f"History context: {history}\n\nUser Query: {query}", calc_context)
             context["results"]["calculator"] = result
             print(f"    Calculator Result: {result[:100]}..." if len(result) > 100 else f"    Calculator Result: {result}")
         
         elif intent == IntentType.GENERAL:
-            context["results"]["general"] = "I'm here to help with your financial questions."
+            # For general conversation, we use the general agent with full history
+            enriched_query = f"Chat History:\n{history}\n\nUser Query: {query}"
+            res = await run_with_retry(general_agent, enriched_query)
+            context["results"]["general"] = res.final_output
+            print(f"    General Result: {res.final_output[:100]}...")
     
-    print("  → Synthesizing final response...")
-    final_response = await synthesize_response(query, context["results"])
+    print("  \u2192 Synthesizing final response...")
+    final_response = await synthesize_response(query, context["results"], history=history)
     
     return final_response
