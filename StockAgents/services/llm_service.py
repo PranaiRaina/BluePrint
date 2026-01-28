@@ -1,7 +1,7 @@
 from openai import AsyncOpenAI
-from StockAgents.backend.core.config import settings
+from StockAgents.core.config import settings
 import json
-from StockAgents.backend.core.prompts import (
+from StockAgents.core.prompts import (
     LLM_ANALYSIS_PROMPT, 
     DATA_EXTRACTION_PROMPT, 
     TICKER_RESOLVER_PROMPT, 

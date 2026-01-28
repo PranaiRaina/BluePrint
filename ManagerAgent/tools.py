@@ -39,7 +39,7 @@ async def ask_stock_analyst(query: str) -> str:
         A comprehensive analysis and recommendation from the stock analysis team.
     """
     try:
-        from StockAgents.backend.services.agent_engine import agent_engine
+        from StockAgents.services.agent_engine import agent_engine
         
         # Run the multi-agent workflow
         result = await agent_engine.run_workflow(query, user_context={})

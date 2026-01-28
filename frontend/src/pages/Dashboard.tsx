@@ -186,7 +186,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                         }}
                                         placeholder="ask me anything..."
                                         rows={1}
-                                        className="relative w-full glass-input text-lg py-4 pl-12 pr-28 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50 resize-none overflow-hidden min-h-[56px]"
+                                        className="relative w-full glass-input text-lg py-4 pl-12 pr-28 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50 resize-none overflow-y-auto no-scrollbar min-h-[56px] max-h-[200px]"
                                     />
                                     <Search className="absolute left-4 top-5 text-text-secondary w-5 h-5" />
 

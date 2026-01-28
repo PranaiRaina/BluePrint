@@ -332,7 +332,7 @@ async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depen
     """
     try:
         # Import FinnhubClient
-        from StockAgents.backend.services.finnhub_client import finnhub_client
+        from StockAgents.services.finnhub_client import finnhub_client
         
         # Fetch quote and candles in parallel
         quote = await finnhub_client.get_quote(ticker.upper())

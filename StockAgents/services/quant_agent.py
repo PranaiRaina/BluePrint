@@ -9,8 +9,11 @@ import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from openai import AsyncOpenAI
-from StockAgents.backend.core.config import settings
-from StockAgents.backend.core.prompts import QUANT_SYSTEM_PROMPT
+from StockAgents.core.config import settings
+from StockAgents.core.prompts import QUANT_SYSTEM_PROMPT
+from StockAgents.tools.wolfram_tool import wolfram_risk_analysis
+from StockAgents.tools.yfinance_tool import get_historical_prices
+from StockAgents.services.finnhub_client import finnhub_client
 
 # Thread pool for blocking Wolfram calls
 executor = ThreadPoolExecutor(max_workers=3)
@@ -32,9 +35,7 @@ async def quant_agent(ticker: str) -> dict:
     Returns:
         {analysis: str, risk_data: dict}
     """
-    from StockAgents.backend.tools.wolfram_tool import wolfram_risk_analysis
-    from StockAgents.backend.tools.yfinance_tool import get_historical_prices
-    from StockAgents.backend.services.finnhub_client import finnhub_client
+    
     
     ticker = ticker.upper().strip()
     

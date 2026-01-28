@@ -10,8 +10,8 @@ import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from openai import AsyncOpenAI
-from StockAgents.backend.core.config import settings
-from StockAgents.backend.core.prompts import RESEARCHER_SYSTEM_PROMPT
+from StockAgents.core.config import settings
+from StockAgents.core.prompts import RESEARCHER_SYSTEM_PROMPT
 
 # Thread pool for blocking Tavily calls
 executor = ThreadPoolExecutor(max_workers=3)
@@ -35,7 +35,7 @@ async def researcher_agent(query: str) -> dict:
     Returns:
         {analysis: str, search_results: dict}
     """
-    from StockAgents.backend.tools.tavily_tool import tavily_market_search
+    from StockAgents.tools.tavily_tool import tavily_market_search
     
     # Step 1: Perform market search (in executor - blocking)
     loop = asyncio.get_running_loop()

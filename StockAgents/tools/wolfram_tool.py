@@ -146,7 +146,7 @@ def wolfram_risk_analysis(ticker: str, prices: list = None, metrics: dict = None
     Returns:
         Combined risk analysis dict
     """
-    from StockAgents.backend.tools.yfinance_tool import get_historical_prices
+    from StockAgents.tools.yfinance_tool import get_historical_prices
     
     ticker = ticker.upper().strip()
     
@@ -186,6 +186,7 @@ def wolfram_risk_analysis(ticker: str, prices: list = None, metrics: dict = None
     if metrics:
         result["beta"] = metrics.get("beta")
         result["peRatio"] = metrics.get("peRatio")
+        result["dividendYield"] = metrics.get("dividendYield")
         result["52WeekHigh"] = metrics.get("52WeekHigh")
         result["52WeekLow"] = metrics.get("52WeekLow")
     

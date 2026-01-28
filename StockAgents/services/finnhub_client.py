@@ -1,5 +1,5 @@
 import httpx
-from StockAgents.backend.core.config import settings
+from StockAgents.core.config import settings
 from typing import List, Dict
 
 class FinnhubClient:
@@ -120,6 +120,7 @@ class FinnhubClient:
                         "52WeekHigh": metric_data.get("52WeekHigh"),
                         "52WeekLow": metric_data.get("52WeekLow"),
                         "peRatio": metric_data.get("peTTM"),
+                        "dividendYield": metric_data.get("dividendYieldIndicatedAnnual"),
                         "source": "finnhub"
                     }
             except Exception as e:

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 import json
 from .finnhub_client import finnhub_client
 from .llm_service import llm_service
-from StockAgents.backend.core.prompts import MAIN_AGENT_PROMPT, PLANNER_SYSTEM_PROMPT
+from StockAgents.core.prompts import MAIN_AGENT_PROMPT, PLANNER_SYSTEM_PROMPT
 
 # System Prompt for the Main Agent (Portfolio Manager)
 
@@ -182,9 +182,12 @@ class AgentEngine:
             - *Good Example*: "Score adjusted from 72 (Consensus) to 68 due to recent negative regulatory news."
 
         8.  **RECOMMENDATION THRESHOLDS:**
-            - Under 40 → SELL
-            - 40-70 → HOLD
-            - Above 70 → BUY
+            - Under 40 → STRONG SELL
+            - 40-50 → WEAK SELL
+            - 50-65 → HOLD
+            - 65-72 → MODERATE BUY
+            - Above 72 → STRONG BUY
+
             - Output format: "Score: X/100 — RECOMMENDATION"
 
         **FORMATTING RULES (CRITICAL):**

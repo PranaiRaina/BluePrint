@@ -43,8 +43,8 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
                 <span className="font-serif font-bold text-xl text-white tracking-wide">BluePrint</span>
             </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+            {/* Navigation Tabs - Centered Absolute */}
+            <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id;
                     const Icon = tab.icon;

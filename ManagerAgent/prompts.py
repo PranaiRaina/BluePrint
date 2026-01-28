@@ -2,7 +2,7 @@
 Prompts for the ManagerAgent Orchestrator.
 """
 
-from StockAgents.backend.core.config import settings
+from StockAgents.core.config import settings
 
 ORCHESTRATOR_SYNTHESIS_PROMPT = f"""You are a helpful financial assistant. Combine these results into ONE well-formatted response.
 
@@ -37,13 +37,15 @@ Results:
 1. **NO CODE BLOCKS**: Return RAW text only.
 2. **NO META-TALK**: Do NOT explain what you are doing. Do NOT mention "Scenario A" or "Scenario B". just output the content.
 3. **NO `//` SEPARATORS**: If you see `Price: $100 // Score: 50` in the results, **REFORMAT** it into a sentence or table. NEVER output `//`.
-3. **Values**: Always bold key numbers (e.g., **$150.00**, **Buy**).
-4. **Data Sources**: Collect sources from the results and list them at the bottom.
-5. **Disclaimer**: Always the last line, small/muted, on its own line.
-6. **NO HORIZONTAL LINES**: Do NOT print `---` or `___` separator lines before the disclaimer.
-7. **Clean Up**: Remove any "Disclaimer" or "Data Sources" text present in the input Results. Create your OWN fresh footer.
+4. **Values**: Always bold key numbers (e.g., **$150.00**, **Buy**).
+5. **Structure**: 
+   - Content First.
+   - Then "Data Sources" line.
+   - Finally, the "Disclaimer" line.
+6. **Data Sources**: You MUST list the sources used (e.g. "Finnhub", "Wolfram", "Tavily").
+7. **Disclaimer**: The disclaimer MUST be the very last line, wrapped in asterisks `*` so it becomes small/grey/italic.
 
-Data Sources: [Consolidated Sources]
+Data Sources: [List Sources Here]
 
 *{{settings.DISCLAIMER_TEXT}}*
 """
