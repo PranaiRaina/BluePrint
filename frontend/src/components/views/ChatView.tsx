@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { agentService } from '../../services/agent';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
-
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatViewProps {
     session: Session;
@@ -39,7 +40,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
         setIsLoading(true);
 
         try {
-            // Real API Call using persistent session ID
             const response = await agentService.calculate(userQuery, session, session.user.id);
 
             setMessages(prev => [...prev, {
@@ -79,18 +79,13 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai' ? 'bg-ai/20 text-ai' : 'bg-white/10 text-white'}`}>
                             {msg.role === 'ai' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </div>
-                        import ReactMarkdown from 'react-markdown';
-
-                        // ... other imports
-
-                        // Inside the component return...
                         <div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed overflow-hidden ${msg.role === 'ai'
                             ? 'bg-white/5 text-slate-200 border border-white/5'
                             : 'bg-primary/20 text-white border border-primary/20'
                             }`}>
                             {msg.role === 'ai' ? (
-                                <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-white prose-strong:text-primary">
-                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-white prose-strong:text-primary prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                 </div>
                             ) : (
                                 msg.content

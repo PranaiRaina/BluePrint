@@ -81,17 +81,24 @@ Results:
 {results_text}
 
 CRITICAL RULES:
-1. Do NOT say "I am unable to provide advice" - you ARE providing analysis based on data
-2. Include ALL details from the results - do not summarize or remove information
-3. Reference the user's specific holdings when giving recommendations
+1. Do NOT say "I am unable to provide advice" - provide analysis based on data.
+2. Include ALL details from the results.
+3. Reference the user's specific holdings.
 
-SPACING REQUIREMENTS (VERY IMPORTANT):
-- Add a BLANK LINE before each numbered section (1., 2., 3.)
-- Add a BLANK LINE before "Data Sources:" 
-- Add a BLANK LINE before the disclaimer
-- Each major section should be separated by a blank line
+FORMATTING REQUIREMENTS:
+- **Use Markdown Tables** for any comparison or metric data. 
+    - Example:
+    | Metric | VTI | S&P 500 |
+    |--------|-----|---------|
+    | Price  | $250| $450    |
+- **Do NOT use '//' separators**. Use separate lines or tables.
+- **Data Sources**: List them at the very end as a clean comma-separated list, prefixed with "Data Sources: ".
 
-Use **bold** for key metrics (prices, percentages, scores).
+SPACING:
+- Add a BLANK LINE before each numbered section.
+- Add a BLANK LINE before the disclaimer.
+
+Use **bold** for key metrics.
 Keep the disclaimer in italics at the very end.
 """
     

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Brain, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import Navbar from '../components/layout/Navbar';
 import UploadZone from '../components/views/UploadZone';
@@ -107,8 +108,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             await new Promise(r => setTimeout(r, 500));
 
             // Parse Agent Output
-            // Since the agent returns text, we'll try to display it intelligently.
-            // Ideally, we'd prompt the agent for JSON, but for now we put the text in the "strategy" field
             setMockInsight({
                 hard: { score: "Calculated", yield: "Dynamic", conf: "High" },
                 soft: {
@@ -119,7 +118,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             });
 
             // Extract stock tickers from user's query ONLY (not from agent response)
-            // Always update - if no tickers found, reset to empty so Stock Analytics shows empty state
             const tickersFromQuery = extractTickers(query);
             setExtractedTickers(tickersFromQuery);
 
@@ -237,8 +235,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                             <h2 className="font-serif font-bold text-xl text-white">Agent Response</h2>
                                         </div>
 
-                                        <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white">
-                                            <ReactMarkdown>
+                                        <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {data.soft.strategy}
                                             </ReactMarkdown>
                                         </div>
@@ -256,7 +254,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
                 {/* --- Other Views --- */}
                 <div className="w-full">
-                    {/* Market Tab Removed */}
                     {activeTab === 'vault' && <UploadZone session={session} />}
                     {activeTab === 'chat' && <ChatView session={session} />}
                     {activeTab === 'stocks' && <StockAnalyticsView session={session} tickers={extractedTickers} />}
