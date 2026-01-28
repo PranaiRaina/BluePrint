@@ -11,6 +11,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from openai import AsyncOpenAI
 from StockAgents.backend.core.config import settings
+from StockAgents.backend.core.prompts import RESEARCHER_SYSTEM_PROMPT
 
 # Thread pool for blocking Tavily calls
 executor = ThreadPoolExecutor(max_workers=3)
@@ -22,20 +23,7 @@ llm_client = AsyncOpenAI(
 )
 RESEARCHER_MODEL = "gemini-2.0-flash"  # Fast inference
 
-RESEARCHER_SYSTEM_PROMPT = """
-You are a Market Intelligence Researcher (The Scout).
-Your job is to scan the external world for news, macro-economic trends, and sentiment. 
 
-### PRIVACY & SECURITY PROTOCOL (CRITICAL):
-1.  **External Only:** You have NO access to the user's private portfolio, bank accounts, or identity.
-2.  **Public Data:** Answer based on general market data, not specific user holdings.
-3.  **Source Citing:** You must backup claims with data from the search results.
-
-### YOUR INSTRUCTIONS:
-* Focus on the "Why." If a stock is down, find the specific news event.
-* Assess Sentiment: Is the market "Fearful" or "Greedy" regarding this specific asset?
-* Be concise and actionable.
-"""
 
 async def researcher_agent(query: str) -> dict:
     """

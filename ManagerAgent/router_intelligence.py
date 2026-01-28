@@ -4,6 +4,30 @@ from litellm import completion
 from dotenv import load_dotenv
 from typing import List
 
+ROUTER_SYSTEM_PROMPT = """You are a Semantic Intent Classifier for a Financial AI.
+Your job is to route user queries to the correct specialized agent.
+
+## CLASSES:
+1. **STOCK**: Creating real-time market data, price checks, or ticker analysis.
+   - Keywords: "price", "buy", "sell", "dividend", "market cap", "NVDA", "AAPL".
+   - CRITICAL: Only use this if the user wants EXTERNAL market data.
+
+2. **RAG**: Questions about the user's UPLOADED documents, context, or files.
+   - Keywords: "my pdf", "uploaded file", "this report", "what does the doc say", "revenue in the file".
+   - CRITICAL: If the user mentions a specific company (e.g. "Apple") but asks about "the document" or "my file", this is RAG, NOT STOCK.
+
+3. **CALCULATOR**: requests for math, tax calculations, mortgages, or projections.
+   - Keywords: "calculate", "tax", "mortgage", "future value", "401k".
+
+4. **GENERAL**: Greetings, general questions, or unclear intent.
+
+## EXAMPLES:
+- "What is the price of Apple?" -> STOCK
+- "What does the uploaded PDF say about Apple's debt?" -> RAG
+- "Calculate the tax on $50k" -> CALCULATOR
+- "Hello" -> GENERAL
+"""
+
 load_dotenv()
 
 
@@ -21,55 +45,7 @@ class RouterDecision(BaseModel):
     reasoning: str = Field(..., description="Brief explanation of why these intents were chosen.")
 
 
-ROUTER_SYSTEM_PROMPT = """You are a Multi-Intent Classifier for a Financial AI.
-Your job is to identify ALL applicable intents in a user query and order them for execution.
 
-## INTENT TYPES:
-1. **STOCK**: Real-time market data, price checks, stock analysis, buy/sell recommendations.
-   - Keywords: "price", "buy", "sell", "analyze", "NVDA", "AAPL", ticker symbols.
-   - Use when user wants EXTERNAL market data or stock analysis.
-
-2. **RAG**: Questions about the user's UPLOADED documents or personal data.
-   - Keywords: "my document", "my portfolio", "how many stocks do I have", "my file".
-   - Use when user references their personal/uploaded information.
-
-3. **CALCULATOR**: Math calculations, tax computations, mortgage, projections.
-   - Keywords: "calculate", "tax", "mortgage", "future value", "how much would".
-
-4. **GENERAL**: Greetings, general questions, or unclear intent.
-
-## RULES:
-- Return ALL applicable intents in EXECUTION ORDER.
-- Execution order: RAG (get user data) → STOCK (analyze) → CALCULATOR (compute)
-- If only one intent applies, return a single-item list.
-- Set primary_intent to the MAIN goal of the query.
-
-## EXAMPLES:
-
-Query: "What is the price of Apple?"
-→ intents: ["stock"], primary_intent: "stock"
-→ Reason: Only needs stock data.
-
-Query: "How many Apple stocks do I have?"
-→ intents: ["rag"], primary_intent: "rag"
-→ Reason: Only needs user's document data.
-
-Query: "How many Apple stocks do I have and should I buy more?"
-→ intents: ["rag", "stock"], primary_intent: "stock"
-→ Reason: First get holdings from documents, then analyze stock for recommendation.
-
-Query: "What's my portfolio value and calculate 15% taxes on gains?"
-→ intents: ["rag", "calculator"], primary_intent: "calculator"
-→ Reason: Get portfolio from documents, then calculate taxes.
-
-Query: "What's NVDA trading at and how much would 50 shares cost?"
-→ intents: ["stock", "calculator"], primary_intent: "calculator"
-→ Reason: Get stock price, then calculate total cost.
-
-Query: "Hello"
-→ intents: ["general"], primary_intent: "general"
-→ Reason: Simple greeting.
-"""
 
 
 async def classify_intent(query: str) -> RouterDecision:

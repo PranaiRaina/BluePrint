@@ -84,6 +84,7 @@ class FinnhubClient:
             l = hist['Low'].tolist()
             # Convert pandas timestamps to unix integers
             t = [int(ts.timestamp()) for ts in hist.index]
+            dates = [ts.strftime('%Y-%m-%d') for ts in hist.index]
             
             return {
                 "c": c,
@@ -91,6 +92,7 @@ class FinnhubClient:
                 "h": h,
                 "l": l,
                 "t": t,
+                "dates": dates,
                 "s": "ok"
             }
         except Exception as e:
