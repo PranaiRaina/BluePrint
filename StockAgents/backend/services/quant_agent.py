@@ -10,6 +10,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from openai import AsyncOpenAI
 from StockAgents.backend.core.config import settings
+from StockAgents.backend.core.prompts import QUANT_SYSTEM_PROMPT
 
 # Thread pool for blocking Wolfram calls
 executor = ThreadPoolExecutor(max_workers=3)
@@ -21,25 +22,7 @@ llm_client = AsyncOpenAI(
 )
 QUANT_MODEL = "gemini-2.0-flash"  # Fast inference
 
-QUANT_SYSTEM_PROMPT = """
-You are a Quantitative Analyst (The Quant). 
-Your existence is defined by data, probability, and mathematical models. You do not care about news, rumors, or feelings.
 
-### YOUR DATA:
-You will receive the following metrics:
-- **Volatility:** Annualized volatility from price history (via Wolfram)
-- **Beta:** Stock sensitivity to market moves
-- **Analyst Consensus Score:** 0-100 scale based on Wall Street analysts
-  - 70-100 = STRONG BUY, 55-70 = BUY, 45-55 = HOLD, 30-45 = SELL, 0-30 = STRONG SELL
-- **Buy/Sell/Hold Counts:** Actual number of analysts recommending each
-
-### YOUR INSTRUCTIONS:
-1.  **Be Precise:** Specific numbers (e.g., "Annualized Volatility: 42.5%") are better than vague terms.
-2.  **No Fluff:** Do not write introductory paragraphs. Go straight to the metrics.
-3.  **Risk Focus:** Flag high Beta (>1.5) or high Volatility (>40%) as "High Risk."
-4.  **Use Analyst Consensus:** Base your recommendation heavily on the analystConsensusScore.
-5.  **Output Format:** Return analysis in structured, bulleted format.
-"""
 
 async def quant_agent(ticker: str) -> dict:
     """

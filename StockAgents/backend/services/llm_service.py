@@ -1,6 +1,12 @@
 from openai import AsyncOpenAI
 from StockAgents.backend.core.config import settings
 import json
+from StockAgents.backend.core.prompts import (
+    LLM_ANALYSIS_PROMPT, 
+    DATA_EXTRACTION_PROMPT, 
+    TICKER_RESOLVER_PROMPT, 
+    TICKER_EXTRACTOR_PROMPT
+)
 
 class LLMService:
     def __init__(self):
@@ -17,13 +23,7 @@ class LLMService:
         """
         
         # Construct a system prompt that acts as a financial analyst
-        system_prompt = (
-            "You are an advanced AI Financial Agent. Your goal is to provide concise, "
-            "data-driven insights based on the provided market data. "
-            "Format your response as a direct answer to the user. "
-            "Do not provide financial advice (disclaimer), but provide technical and fundamental analysis based on the data. "
-            "If the data is missing, state that clearly."
-        )
+        system_prompt = LLM_ANALYSIS_PROMPT
 
         # Prepare the context (limit size if needed)
         context_str = json.dumps(context_data, indent=2)
@@ -56,15 +56,7 @@ class LLMService:
         Uses LLM to extract structured JSON data from a natural language query.
         Target: Extract stock holdings like {"AAPL": 5000, "TSLA": 2000}.
         """
-        system_prompt = (
-            "You are a data extractor. Extract stock symbols and their corresponding monetary values "
-            "or share counts from the user's query. "
-            "Return ONLY a valid JSON object with the format: {'SYMBOL': amount}. "
-            "If no currency is specified, assume USD value. "
-            "If integers are small (<1000) and context suggests shares, you can treat as shares but prefer value. "
-            "Example input: 'I have 5k in Apple and 2000 in Tesla' -> {'AAPL': 5000, 'TSLA': 2000}. "
-            "If no data found, return empty json {}."
-        )
+        system_prompt = DATA_EXTRACTION_PROMPT
         
         try:
             completion = await self.client.chat.completions.create(
@@ -88,14 +80,7 @@ class LLMService:
         Example: "Analyze Apple" -> "AAPL". "Stock for Tesla" -> "TSLA".
         Returns just the ticker string, or None.
         """
-        system_prompt = (
-            "You are a Ticker Resolver. output ONLY the capital stock ticker symbols for the company mentioned. "
-            "If the user mentions a company name, convert it to the most common US listing ticker. "
-            "If multiple mentioned, return the first one. "
-            "Example: 'Analyze Microsoft' -> 'MSFT'. "
-            "Example: 'How is NVDA doing' -> 'NVDA'. "
-            "Output ONLY the ticker string. No extra text."
-        )
+        system_prompt = TICKER_RESOLVER_PROMPT
         
         try:
             completion = await self.client.chat.completions.create(
@@ -120,14 +105,7 @@ class LLMService:
         Extracts ALL stock tickers mentioned in a query, resolving company names.
         Example: "Compare Apple, Meta and NVDA" -> ["AAPL", "META", "NVDA"]
         """
-        system_prompt = (
-            "You are a Ticker Extractor. Extract ALL company names or tickers mentioned in the user's query "
-            "and convert them to their primary US stock market tickers. "
-            "Return ONLY a JSON list of strings. "
-            "Example: 'Compare Microsoft and Google' -> ['MSFT', 'GOOGL'] "
-            "Example: 'Optimize Meta vs Tesla' -> ['META', 'TSLA'] "
-            "If no companies found, return empty list []."
-        )
+        system_prompt = TICKER_EXTRACTOR_PROMPT
         
         try:
             completion = await self.client.chat.completions.create(
