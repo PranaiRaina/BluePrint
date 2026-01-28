@@ -40,8 +40,11 @@ def wolfram_compute_volatility(prices: list) -> dict:
         return {"error": "Insufficient price data (need at least 10 data points)"}
     
     if not WOLFRAM_AVAILABLE or not WOLFRAM_KEY_ID or not WOLFRAM_KEY_SECRET:
-        # Fallback to Python implementation
-        return python_compute_volatility(prices)
+        # Log warning about fallback
+        print("[WARN] Wolfram Cloud not configured. Using Python fallback for volatility calculation.")
+        result = python_compute_volatility(prices)
+        result["warning"] = "Wolfram Cloud not configured. Using Python fallback."
+        return result
     
     session = None
     try:

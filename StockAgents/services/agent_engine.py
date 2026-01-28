@@ -78,13 +78,8 @@ class LLMPlanner:
             return ExecutionPlan.model_validate_json(content)
         except Exception as e:
             print(f"Planning Error: {e}")
-            # Fallback Plan (assume simple stock check)
-            return ExecutionPlan(
-                reasoning="Fallback due to error",
-                steps=[
-                    PlannerStep(tool="news_research", args={"query": user_query}, description="Fallback search")
-                ]
-            )
+            # Surface error to user instead of silent fallback
+            raise ValueError(f"Unable to create execution plan: {str(e)}")
 
 class AgentEngine:
     def __init__(self):
@@ -112,7 +107,10 @@ class AgentEngine:
                         min_change_percent=step.args.get("min_change_percent", 0)
                     )
                 elif step.tool == "get_stock_data":
-                    ticker = step.args.get("ticker", "AAPL").upper()
+                    ticker = step.args.get("ticker")
+                    if not ticker:
+                        return {"error": "Missing ticker argument for get_stock_data"}
+                    ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
                     # Store chart data separately for frontend
@@ -121,7 +119,10 @@ class AgentEngine:
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
-                    return await quant_agent.run(step.args.get("ticker", "AAPL"))
+                    ticker = step.args.get("ticker")
+                    if not ticker:
+                        return {"error": "Missing ticker argument for quant_analysis"}
+                    return await quant_agent.run(ticker)
                 elif step.tool == "news_research":
                     from .researcher_agent import researcher_agent
                     return await researcher_agent.run(step.args.get("query", user_query))
