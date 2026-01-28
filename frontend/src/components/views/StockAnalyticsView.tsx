@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, RefreshCcw, ChevronDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
@@ -13,7 +13,7 @@ interface StockData {
     low: number;
     open: number;
     previousClose: number;
-    candles: { time: string; value: number }[];
+    candles: { time: string; value: number; open: number; high: number; low: number }[];
 }
 
 interface StockAnalyticsViewProps {
@@ -22,10 +22,13 @@ interface StockAnalyticsViewProps {
 }
 
 const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, tickers }) => {
+
     const [selectedTicker, setSelectedTicker] = useState<string>(tickers[0] || '');
     const [stockData, setStockData] = useState<StockData | null>(null);
+    const [hoverData, setHoverData] = useState<{ open: number; high: number; low: number; value: number } | null>(null);
     const [loading, setLoading] = useState(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [timeRange, setTimeRange] = useState("3m");
 
     // Fetch stock data when ticker changes
     useEffect(() => {
@@ -33,7 +36,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             if (!selectedTicker) return;
             setLoading(true);
             try {
-                const data = await agentService.getStockData(selectedTicker, session);
+                const data = await agentService.getStockData(selectedTicker, session, timeRange);
                 setStockData(data);
             } catch (error) {
                 console.error('Failed to fetch stock data:', error);
@@ -42,7 +45,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             }
         };
         fetchData();
-    }, [selectedTicker, session]);
+    }, [selectedTicker, session, timeRange]);
 
     // Update selected ticker when tickers prop changes
     useEffect(() => {
@@ -79,20 +82,13 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
     }
 
     return (
-        <div className="w-full max-w-5xl mx-auto pt-10 px-4">
+        <div className="w-full max-w-5xl mx-auto pt-10 px-4 pb-20">
             {/* Header */}
             <div className="flex justify-between items-end mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Stock Analytics</h1>
                     <p className="text-text-secondary">Real-time price visualization for your queried stocks.</p>
                 </div>
-                <button
-                    onClick={() => setSelectedTicker(selectedTicker)}
-                    className="neon-button flex items-center gap-2 text-sm"
-                >
-                    <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
-                </button>
             </div>
 
             {/* Ticker Dropdown */}
@@ -141,14 +137,41 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             )}
 
             {/* Chart */}
-            <div className="glass-card p-6 h-96 w-full">
+            <div className="glass-card p-6 h-96 w-full relative">
+                {/* Range Selectors Overlay */}
+                <div className="absolute top-4 right-6 z-10">
+                    <div className="glass-card p-1 flex gap-1 bg-black/40 backdrop-blur-md">
+                        {['1d', '1w', '1m', '3m', '6m', '1y'].map((range) => (
+                            <button
+                                key={range}
+                                onClick={() => setTimeRange(range)}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${timeRange === range
+                                    ? 'bg-primary text-black shadow-neon'
+                                    : 'text-text-secondary hover:text-white hover:bg-white/5'
+                                    }`}
+                            >
+                                {range.toUpperCase()}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {loading ? (
                     <div className="w-full h-full flex items-center justify-center">
                         <div className="text-text-secondary animate-pulse">Loading chart data...</div>
                     </div>
                 ) : stockData?.candles && stockData.candles.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={stockData.candles}>
+                        <AreaChart
+                            margin={{ top: 35, right: 0, left: 0, bottom: 50 }}
+                            data={stockData.candles}
+                            onMouseMove={(data) => {
+                                if (data.activePayload && data.activePayload[0]) {
+                                    setHoverData(data.activePayload[0].payload);
+                                }
+                            }}
+                            onMouseLeave={() => setHoverData(null)}
+                        >
                             <defs>
                                 <linearGradient id="colorStock" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="5%" stopColor={isPositive ? "#10B981" : "#EF4444"} stopOpacity={0.3} />
@@ -156,7 +179,67 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                                 </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                            <XAxis dataKey="time" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                            <XAxis
+                                dataKey="time"
+                                stroke="#94A3B8"
+                                fontSize={12}
+                                tickLine={false}
+                                axisLine={false}
+                                interval={0}
+                                tickFormatter={(val, index) => {
+                                    // 1D View: Hourly ticks only
+                                    if (timeRange === '1d') {
+                                        return val.endsWith(':00') ? val : '';
+                                    }
+
+                                    // 1W View: Daily markers ("Jan 22")
+                                    if (timeRange === '1w') {
+                                        // val format: "Jan 22 10:30"
+                                        const parts = val.split(' ');
+                                        if (parts.length < 3) return ''; // Unexpected format
+                                        const datePart = `${parts[0]} ${parts[1]}`;
+
+                                        if (index === 0) return datePart;
+
+                                        const prevVal = stockData!.candles[index - 1]?.time;
+                                        if (!prevVal) return '';
+
+                                        // Extract prev date
+                                        const prevParts = prevVal.split(' ');
+                                        const prevDatePart = `${prevParts[0]} ${prevParts[1]}`;
+
+                                        return datePart !== prevDatePart ? datePart : '';
+                                    }
+
+                                    // Default (1m+): Month markers
+                                    const month = val.split(' ')[0];
+
+                                    if (index === 0) {
+                                        // Edge case: If month changes within the first few ticks (overlap risk),
+                                        // hide the first label to prioritize the new month label.
+                                        const lookAhead = 8; // approx 25-30px width buffer
+                                        let monthChangesSoon = false;
+                                        for (let i = 1; i <= lookAhead; i++) {
+                                            const nextVal = stockData!.candles[index + i]?.time;
+                                            if (nextVal) {
+                                                const nextMonth = nextVal.split(' ')[0];
+                                                if (nextMonth !== month) {
+                                                    monthChangesSoon = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        return monthChangesSoon ? '' : month;
+                                    }
+
+                                    // Check previous month
+                                    const prevVal = stockData!.candles[index - 1]?.time;
+                                    const prevMonth = prevVal ? prevVal.split(' ')[0] : '';
+
+                                    // Only return if changed
+                                    return month !== prevMonth ? month : '';
+                                }}
+                            />
                             <YAxis domain={['auto', 'auto']} stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
@@ -165,6 +248,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                             <Area
                                 type="monotone"
                                 dataKey="value"
+                                name="Value"
                                 stroke={isPositive ? "#10B981" : "#EF4444"}
                                 strokeWidth={2}
                                 fillOpacity={1}
@@ -183,10 +267,10 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             {stockData && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
                     {[
-                        { label: 'Open', value: `$${stockData.open.toFixed(2)}` },
-                        { label: 'High', value: `$${stockData.high.toFixed(2)}` },
-                        { label: 'Low', value: `$${stockData.low.toFixed(2)}` },
-                        { label: 'Prev Close', value: `$${stockData.previousClose.toFixed(2)}` },
+                        { label: 'Open', value: `$${(hoverData?.open ?? stockData.open).toFixed(2)}` },
+                        { label: 'High', value: `$${(hoverData?.high ?? stockData.high).toFixed(2)}` },
+                        { label: 'Low', value: `$${(hoverData?.low ?? stockData.low).toFixed(2)}` },
+                        { label: hoverData ? 'Close' : 'Prev Close', value: `$${(hoverData ? hoverData.value : stockData.previousClose).toFixed(2)}` },
                     ].map((stat, i) => (
                         <div key={i} className="glass-card p-4 text-center">
                             <div className="text-xs text-text-secondary uppercase tracking-wider">{stat.label}</div>

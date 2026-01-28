@@ -37,39 +37,65 @@ class FinnhubClient:
                     })
         return sorted(results, key=lambda x: x['change_percent'], reverse=True)
 
-    async def get_candles(self, symbol: str, resolution: str = "D") -> Dict:
+    async def get_candles(self, symbol: str, resolution: str = "D", time_range: str = "3m") -> Dict:
         """
-        Generates SYNTHETIC candle data because API access is restricted.
-        Seeds the chart ending closer to the current price for visual consistency.
+        Fetches REAL candle data using yfinance (acting as a fallback for Finnhub free tier).
+        ranges: 1d, 1w, 1m, 3m, 6m, 1y
         """
-        # Get real current price to anchor the chart
-        quote = await self.get_quote(symbol)
-        current_price = quote.get('c', 150.0)
-        
-        # Generate 30 points of "history"
-        import time
-        import random
-        import math
-        
-        now = int(time.time())
-        generated_c = []
-        generated_t = []
-        
-        # Random Walk backwards from current price
-        price = current_price
-        for i in range(30):
-            generated_c.append(price)
-            generated_t.append(now - (i * 300)) # 5 min intervals backwards
+        import yfinance as yf
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        try:
+            stock = yf.Ticker(symbol)
             
-            # Random walk step
-            change = (random.random() - 0.5) * (price * 0.005) # 0.5% volatility
-            price -= change # Going backwards
+            # Map range to yfinance period/interval
+            period = "3mo"
+            interval = "1d"
             
-        return {
-            "c": list(reversed(generated_c)),
-            "t": list(reversed(generated_t)),
-            "s": "ok"
-        }
+            if time_range == "1d":
+                period = "1d"
+                interval = "5m"
+            elif time_range == "1w":
+                period = "5d"
+                interval = "15m"
+            elif time_range == "1m":
+                period = "1mo"
+                interval = "1d"
+            elif time_range == "6m":
+                period = "6mo"
+                interval = "1d"
+            elif time_range == "1y":
+                period = "1y"
+                interval = "1d"
+            # Default 3m (already set)
+                
+            hist = stock.history(period=period, interval=interval)
+            
+            if hist.empty:
+                return {"s": "no_data"}
+
+            # Convert to Finnhub format
+            # c: Close, o: Open, h: High, l: Low, t: Timestamp
+            
+            c = hist['Close'].tolist()
+            o = hist['Open'].tolist()
+            h = hist['High'].tolist()
+            l = hist['Low'].tolist()
+            # Convert pandas timestamps to unix integers
+            t = [int(ts.timestamp()) for ts in hist.index]
+            
+            return {
+                "c": c,
+                "o": o,
+                "h": h,
+                "l": l,
+                "t": t,
+                "s": "ok"
+            }
+        except Exception as e:
+            print(f"Error fetching real candles for {symbol}: {e}")
+            return {"s": "error", "error": str(e)}
 
     async def get_company_metrics(self, symbol: str) -> Dict:
         """

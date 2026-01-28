@@ -112,7 +112,7 @@ export const agentService = {
      * @param ticker Stock ticker symbol (e.g., "NVDA").
      * @param session Supabase session for authentication token.
      */
-    getStockData: async (ticker: string, session: Session | null): Promise<any> => {
+    getStockData: async (ticker: string, session: Session | null, timeRange: string = "3m"): Promise<any> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {};
@@ -120,7 +120,7 @@ export const agentService = {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(`${API_Base}/v1/agent/stock/${ticker.toUpperCase()}`, {
+            const response = await fetch(`${API_Base}/v1/agent/stock/${ticker.toUpperCase()}?time_range=${timeRange}`, {
                 method: 'GET',
                 headers
             });

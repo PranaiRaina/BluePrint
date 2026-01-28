@@ -19,3 +19,7 @@ spacy
 langgraph
 tavily-python
 langchain-groq
+yfinance
+scikit-learn
+pandas
+numpy

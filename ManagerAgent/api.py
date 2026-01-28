@@ -265,7 +265,7 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     return get_chat_history_json(session_id)
 @app.get("/v1/agent/stock/{ticker}")
-async def get_stock_data(ticker: str, user: dict = Depends(get_current_user)):
+async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)):
     """
     Get real-time stock quote and price history for a ticker.
     Returns data formatted for frontend charting.
@@ -276,18 +276,41 @@ async def get_stock_data(ticker: str, user: dict = Depends(get_current_user)):
         
         # Fetch quote and candles in parallel
         quote = await finnhub_client.get_quote(ticker.upper())
-        candles = await finnhub_client.get_candles(ticker.upper())
+        candles = await finnhub_client.get_candles(ticker.upper(), time_range=time_range)
         
         # Format candles for recharts
         chart_data = []
-        if candles.get("s") == "ok" and candles.get("c") and candles.get("t"):
-            for i, (price, timestamp) in enumerate(zip(candles["c"], candles["t"])):
-                # Convert timestamp to readable time
-                from datetime import datetime
-                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M")
+        if candles.get("s") == "ok" and candles.get("c"):
+            c = candles.get("c", [])
+            t = candles.get("t", [])
+            o = candles.get("o", [0] * len(c)) # Fallback if missing
+            h = candles.get("h", [0] * len(c))
+            l = candles.get("l", [0] * len(c))
+            
+            for i in range(len(c)):
+                price = c[i]
+                timestamp = t[i]
+                
+                # Convert timestamp to readable date/time
+                # For intraday (1d, 1w), show Time. For daily (1m+), show Date.
+                from datetime import datetime, timezone
+                
+                if time_range == "1d":
+                     # Intraday 1D: Show Time only
+                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%H:%M")
+                elif time_range == "1w":
+                     # Intraday 1W: Show Date + Time so frontend can detect day changes
+                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%b %d %H:%M")
+                else:
+                     # Daily: Show Date (UTC midnight)
+                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%b %d")
+                
                 chart_data.append({
                     "time": time_str,
-                    "value": round(price, 2)
+                    "value": round(price, 2),
+                    "open": round(o[i], 2),
+                    "high": round(h[i], 2),
+                    "low": round(l[i], 2),
                 })
         
         return {
