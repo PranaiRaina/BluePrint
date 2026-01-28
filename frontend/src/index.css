@@ -68,9 +68,11 @@ body {
 }
 
 .prose em {
-  color: #94a3b8;
-  /* smaller/muted for disclaimers */
-  font-size: 0.9em;
+  color: #64748b;
+  /* Very muted/darker slate */
+  font-size: 0.75rem;
+  /* Extra small (text-xs) */
+  font-style: italic;
 }
 
 /* Section headers styling */

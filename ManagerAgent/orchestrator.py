@@ -80,26 +80,25 @@ User's Question: {query}
 Results:
 {results_text}
 
-CRITICAL RULES:
-1. Do NOT say "I am unable to provide advice" - provide analysis based on data.
-2. Include ALL details from the results.
-3. Reference the user's specific holdings.
+CRITICAL STYLE RULES:
+1. **NO CODE BLOCKS**: Do NOT wrap the response in triple backticks (```markdown). Return RAW text only.
+2. **Tables**: Use Markdown tables for the Summary.
+3. **Headers**: Use `###` for section headers (e.g., `### 1. Executive Summary`).
 
-FORMATTING REQUIREMENTS:
-- **Use Markdown Tables** for any comparison or metric data. 
-    - Example:
-    | Metric | VTI | S&P 500 |
-    |--------|-----|---------|
-    | Price  | $250| $450    |
-- **Do NOT use '//' separators**. Use separate lines or tables.
-- **Data Sources**: List them at the very end as a clean comma-separated list, prefixed with "Data Sources: ".
+RESPONSE STRUCTURE:
+### 1. Executive Summary
+(Markdown Table here)
 
-SPACING:
-- Add a BLANK LINE before each numbered section.
-- Add a BLANK LINE before the disclaimer.
+### 2. Deep Dive Analysis
+(Detailed text)
 
-Use **bold** for key metrics.
-Keep the disclaimer in italics at the very end.
+### 3. Verdict/Recommendation
+(Conclusion)
+
+Data Sources: Source 1, Source 2
+
+*Disclaimer: I am an AI, not a financial advisor. Do your own due diligence.*
+
 """
     
     try:
