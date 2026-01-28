@@ -11,6 +11,7 @@ from ManagerAgent.router_intelligence import IntentType
 from ManagerAgent.tools import perform_rag_search, ask_stock_analyst
 from CalcAgent.src.agent import financial_agent
 from CalcAgent.src.utils import run_with_retry
+from ManagerAgent.prompts import ORCHESTRATOR_SYNTHESIS_PROMPT
 import os
 
 
@@ -73,33 +74,8 @@ async def synthesize_response(query: str, results: Dict[str, str]) -> str:
         if result
     ])
     
-    prompt = f"""You are a helpful financial assistant. Combine these results into ONE well-formatted response.
-
-User's Question: {query}
-
-Results:
-{results_text}
-
-CRITICAL STYLE RULES:
-1. **NO CODE BLOCKS**: Do NOT wrap the response in triple backticks (```markdown). Return RAW text only.
-2. **Tables**: Use Markdown tables for the Summary.
-3. **Headers**: Use `###` for section headers (e.g., `### 1. Executive Summary`).
-
-RESPONSE STRUCTURE:
-### 1. Executive Summary
-(Markdown Table here)
-
-### 2. Deep Dive Analysis
-(Detailed text)
-
-### 3. Verdict/Recommendation
-(Conclusion)
-
-Data Sources: Source 1, Source 2
-
-*Disclaimer: I am an AI, not a financial advisor. Do your own due diligence.*
-
-"""
+    
+    prompt = ORCHESTRATOR_SYNTHESIS_PROMPT.format(query=query, results_text=results_text)
     
     try:
         response = await acompletion(
