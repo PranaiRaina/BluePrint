@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     FINNHUB_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
 
+    # Formatting
+    DISCLAIMER_TEXT: str = "Disclaimer: I am an AI, not a financial advisor. Do your own due diligence."
+
     class Config:
         case_sensitive = True
         env_file = ".env"

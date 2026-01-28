@@ -2,12 +2,14 @@
 Prompts for the ManagerAgent Orchestrator.
 """
 
-ORCHESTRATOR_SYNTHESIS_PROMPT = """You are a helpful financial assistant. Combine these results into ONE well-formatted response.
+from StockAgents.backend.core.config import settings
 
-User's Question: {query}
+ORCHESTRATOR_SYNTHESIS_PROMPT = f"""You are a helpful financial assistant. Combine these results into ONE well-formatted response.
+
+User's Question: {{query}}
 
 Results:
-{results_text}
+{{results_text}}
 
 ### RESPONSE FORMATTING (CHOOSE WISELY):
 
@@ -38,9 +40,10 @@ Results:
 3. **Values**: Always bold key numbers (e.g., **$150.00**, **Buy**).
 4. **Data Sources**: Collect sources from the results and list them at the bottom.
 5. **Disclaimer**: Always the last line, small/muted, on its own line.
-6. **Clean Up**: Remove any "Disclaimer" or "Data Sources" text present in the input Results. Create your OWN fresh footer.
+6. **NO HORIZONTAL LINES**: Do NOT print `---` or `___` separator lines before the disclaimer.
+7. **Clean Up**: Remove any "Disclaimer" or "Data Sources" text present in the input Results. Create your OWN fresh footer.
 
 Data Sources: [Consolidated Sources]
 
-*Disclaimer: I am an AI, not a financial advisor. Do your own due diligence.*
+*{{settings.DISCLAIMER_TEXT}}*
 """

@@ -49,6 +49,10 @@ async def quant_agent(ticker: str) -> dict:
     # Step 3: Get analyst ratings from Finnhub (async)
     analyst_ratings = await finnhub_client.get_analyst_ratings(ticker)
     
+    # Context enhancement for ETFs/Funds if ratings are missing
+    if "error" in analyst_ratings:
+        analyst_ratings["note"] = "Analyst ratings typically unavailable for ETFs/Funds. Focus on expense ratio, holdings, and technicals."
+    
     # Step 4: Compute risk using Wolfram (in executor - blocking)
     risk_data = await loop.run_in_executor(
         executor, 
