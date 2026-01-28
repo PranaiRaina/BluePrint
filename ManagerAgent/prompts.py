@@ -47,5 +47,5 @@ Results:
 
 Data Sources: [List Sources Here]
 
-*{{settings.DISCLAIMER_TEXT}}*
+*{settings.DISCLAIMER_TEXT}*
 """
