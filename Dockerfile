@@ -29,8 +29,7 @@ COPY . .
 
 # Expose ports
 # 8001: CalcAgent API
-# 8080: RAG Pipeline API
-EXPOSE 8001 8080
+EXPOSE 8001
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1

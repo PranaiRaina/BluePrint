@@ -18,7 +18,6 @@ services:
     container_name: rosehack_backend
     ports:
       - "8001:8001" # Agent API
-      - "8080:8080" # RAG Pipeline (optional)
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - WOLFRAM_APP_ID=${WOLFRAM_APP_ID}
