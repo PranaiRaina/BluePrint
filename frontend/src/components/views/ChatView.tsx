@@ -16,6 +16,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [loadingStatus, setLoadingStatus] = useState("Thinking...");
 
     useEffect(() => {
         const loadHistory = async () => {
@@ -34,25 +35,57 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
         if (!input.trim() || isLoading) return;
 
         const userQuery = input;
+
+        // Add User Message
         const newMsgs = [...messages, { role: 'user', content: userQuery }];
         setMessages(newMsgs);
         setInput('');
         setIsLoading(true);
+        setLoadingStatus("Thinking...");
+
+        // Add Empty AI Message Placeholder
+        setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
         try {
-            const response = await agentService.calculate(userQuery, session, session.user.id);
-
-            setMessages(prev => [...prev, {
-                role: 'ai',
-                content: response.final_output
-            }]);
+            await agentService.streamChat(
+                userQuery,
+                session,
+                session.user.id,
+                {
+                    onStatus: (status) => {
+                        setLoadingStatus(status);
+                    },
+                    onToken: (token) => {
+                        setMessages(prev => {
+                            const lastMsg = prev[prev.length - 1];
+                            if (lastMsg.role === 'ai') {
+                                return [
+                                    ...prev.slice(0, -1),
+                                    { ...lastMsg, content: lastMsg.content + token }
+                                ];
+                            }
+                            return prev;
+                        });
+                    },
+                    onComplete: () => {
+                        setIsLoading(false);
+                        setLoadingStatus("Thinking...");
+                    },
+                    onError: (err) => {
+                        console.error(err);
+                        setMessages(prev => {
+                            const lastMsg = prev[prev.length - 1];
+                            return [
+                                ...prev.slice(0, -1),
+                                { ...lastMsg, content: lastMsg.content + "\n\n[Error encountered]" }
+                            ];
+                        });
+                        setIsLoading(false);
+                    }
+                }
+            );
         } catch (error) {
             console.error(error);
-            setMessages(prev => [...prev, {
-                role: 'ai',
-                content: "I encountered an error connecting to the financial brain. Please try again."
-            }]);
-        } finally {
             setIsLoading(false);
         }
     };
@@ -99,7 +132,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
                             <Bot className="w-4 h-4 text-ai animate-pulse" />
                         </div>
                         <div className="p-4 rounded-2xl bg-white/5 text-slate-400 border border-white/5 text-xs">
-                            Thinking...
+                            {loadingStatus}
                         </div>
                     </div>
                 )}

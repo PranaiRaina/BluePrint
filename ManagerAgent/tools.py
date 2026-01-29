@@ -26,6 +26,32 @@ async def perform_rag_search(query: str, user_id: str = "fallback-user-id") -> s
     except Exception as e:
         return f"Error performing RAG search: {str(e)}"
 
+async def perform_rag_search_stream(query: str, user_id: str = "fallback-user-id"):
+    """
+    Streamed version of perform_rag_search.
+    Yields:
+        Reading: {"type": "status", "content": "..."}
+        Tokens:  {"type": "token", "content": "..."}
+    """
+    try:
+        # Use astream_events to capture the LLM output from the 'generate' node
+        async for event in app_graph.astream_events(
+            {"question": query, "user_id": user_id},
+            version="v1"
+        ):
+            kind = event["event"]
+            
+            if kind == "on_chat_model_stream":
+                # Check if this stream is coming from the 'generate' node
+                # The 'generate' node uses 'ChatGoogleGenerativeAI'
+                content = event["data"]["chunk"].content
+                if content:
+                    yield {"type": "token", "content": content}
+                    await asyncio.sleep(0) # Force buffer flush
+            
+    except Exception as e:
+        yield {"type": "token", "content": f"Error in RAG stream: {str(e)}"}
+
 
 async def ask_stock_analyst(query: str) -> str:
     """
@@ -54,4 +80,22 @@ async def ask_stock_analyst(query: str) -> str:
         return result.get("recommendation", "Stock analysis completed, but no recommendation was generated.")
     except Exception as e:
         return f"Error performing stock analysis: {str(e)}"
+
+async def ask_stock_analyst_stream(query: str):
+    """
+    Streamed version of ask_stock_analyst.
+    """
+    try:
+        from StockAgents.services.agent_engine import agent_engine
+        from StockAgents.services.llm_service import llm_service
+        
+        yield {"type": "status", "content": "Extracting portfolio context..."}
+        user_context = await llm_service.extract_structured_data(query)
+        
+        # Run workflow stream
+        async for chunk in agent_engine.run_workflow_stream(query, user_context=user_context):
+            yield chunk
+
+    except Exception as e:
+        yield {"type": "token", "content": f"Error in Stock stream: {str(e)}"}
 

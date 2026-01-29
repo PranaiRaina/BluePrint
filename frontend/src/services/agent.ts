@@ -48,6 +48,80 @@ export const agentService = {
     },
 
     /**
+     * Stream a chat query to the Manager Agent (SSE).
+     */
+    streamChat: async (
+        query: string,
+        session: Session | null,
+        sessionId: string = 'default',
+        callbacks: {
+            onStatus: (status: string) => void;
+            onToken: (token: string) => void;
+            onComplete: () => void;
+            onError: (error: string) => void;
+        }
+    ): Promise<void> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/chat/stream`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ query, session_id: sessionId })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `API Error: ${response.statusText}`);
+            }
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (!reader) throw new Error("No reader available");
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+
+                            if (data.type === 'token') {
+                                callbacks.onToken(data.content);
+                            } else if (data.type === 'status') {
+                                callbacks.onStatus(data.content);
+                            } else if (data.type === 'error') {
+                                callbacks.onError(data.content);
+                            } else if (data.type === 'end') {
+                                // Stream finished gracefully
+                            }
+                        } catch (e) {
+                            console.error("Error parsing SSE chunk", e);
+                        }
+                    }
+                }
+            }
+            callbacks.onComplete();
+
+        } catch (error) {
+            console.error("Stream Error:", error);
+            callbacks.onError(error instanceof Error ? error.message : String(error));
+        }
+    },
+
+    /**
      * Upload a document for RAG ingestion.
      */
     upload: async (file: File, session: Session | null): Promise<any> => {
