@@ -306,14 +306,14 @@ async def chat_stream(request: Request, body: AgentRequest):
             full_response_buffer = []
             
             async for chunk in run_stream():
-                # Yield to client (SSE format)
+                # Yield to client (SSE format) IMMEDIATELY
                 yield f"data: {json.dumps(chunk)}\n\n"
-                await asyncio.sleep(0.02) # Force more aggressive buffer flush
+                # Force return to event loop to allow write to socket
+                await asyncio.sleep(0)
                 
                 # Buffer tokens for history
                 if chunk["type"] == "token":
                     content = chunk["content"]
-                    print(f"DEBUG: Chunk length: {len(content)} - {content[:20]}...")
                     full_response_buffer.append(content)
 
             # 4. Save History (After stream completes)

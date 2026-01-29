@@ -37,20 +37,27 @@ async def perform_rag_search_stream(query: str, user_id: str = "fallback-user-id
         # Use astream_events to capture the LLM output from the 'generate' node
         async for event in app_graph.astream_events(
             {"question": query, "user_id": user_id},
-            version="v1"
+            version="v2"
         ):
             kind = event["event"]
             
             if kind == "on_chat_model_stream":
                 # Check if this stream is coming from the 'generate' node
                 # The 'generate' node uses 'ChatGoogleGenerativeAI'
-                content = event["data"]["chunk"].content
+                # In V2, we get standard Run events
+                chunk = event["data"]["chunk"]
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
                 if content:
                     yield {"type": "token", "content": content}
                     await asyncio.sleep(0) # Force buffer flush
             
+            elif kind == "on_tool_start":
+                # Yield status for internal RAG tool usage (e.g. retriever)
+                yield {"type": "status", "content": f"RAG Tool: {event['name']}..."}
+            
     except Exception as e:
         yield {"type": "token", "content": f"Error in RAG stream: {str(e)}"}
+
 
 
 async def ask_stock_analyst(query: str) -> str:

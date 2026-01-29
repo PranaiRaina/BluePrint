@@ -86,14 +86,22 @@ export const agentService = {
 
             if (!reader) throw new Error("No reader available");
 
+            let buffer = '';
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+
+                // Keep the last line in the buffer if it's incomplete
+                // If the chunk ended with \n, the last line will be empty, which is fine
+                buffer = lines.pop() || '';
 
                 for (const line of lines) {
+                    if (line.trim() === '') continue;
+
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
