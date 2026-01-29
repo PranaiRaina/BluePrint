@@ -93,10 +93,18 @@ def init_db():
             session_id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             title TEXT,
+            metadata TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Migration for metadata column
+    cursor.execute("PRAGMA table_info(chat_sessions)")
+    session_columns = [row[1] for row in cursor.fetchall()]
+    if "metadata" not in session_columns:
+        print("  → Migrating DB: Adding metadata column to chat_sessions")
+        cursor.execute("ALTER TABLE chat_sessions ADD COLUMN metadata TEXT")
         
     conn.commit()
     conn.close()
@@ -192,7 +200,9 @@ class CreateSessionRequest(BaseModel):
     title: Optional[str] = "New Chat"
     
 class UpdateSessionRequest(BaseModel):
-    title: str
+    title: Optional[str] = None
+    metadata: Optional[str] = None
+
 
 @app.get("/health")
 async def health_check():
@@ -580,7 +590,7 @@ async def list_sessions(user: dict = Depends(get_current_user)):
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT session_id, title, created_at FROM chat_sessions 
+            SELECT session_id, title, metadata, created_at FROM chat_sessions 
             WHERE user_id = ? 
             ORDER BY updated_at DESC
         """, (user_id,))
@@ -614,16 +624,29 @@ async def create_session(body: CreateSessionRequest, user: dict = Depends(get_cu
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/v1/agent/sessions/{session_id}")
-async def rename_session(session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)):
-    """Rename a session."""
+async def update_session(session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)):
+    """Update a session (rename or update metadata)."""
     user_id = user["sub"]
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE session_id = ? AND user_id = ?
-        """, (body.title, session_id, user_id))
+        
+        if body.title is not None and body.metadata is not None:
+             cursor.execute("""
+                UPDATE chat_sessions SET title = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE session_id = ? AND user_id = ?
+            """, (body.title, body.metadata, session_id, user_id))
+        elif body.title is not None:
+             cursor.execute("""
+                UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE session_id = ? AND user_id = ?
+            """, (body.title, session_id, user_id))
+        elif body.metadata is not None:
+             cursor.execute("""
+                UPDATE chat_sessions SET metadata = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE session_id = ? AND user_id = ?
+            """, (body.metadata, session_id, user_id))
+            
         conn.commit()
         conn.close()
         return {"status": "success"}

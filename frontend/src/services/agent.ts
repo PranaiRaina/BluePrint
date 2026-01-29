@@ -331,9 +331,9 @@ export const agentService = {
     },
 
     /**
-     * Rename a session.
+     * Update a session (rename or metadata).
      */
-    renameSession: async (sessionId: string, title: string, session: Session | null): Promise<boolean> => {
+    updateSession: async (sessionId: string, updates: { title?: string, metadata?: string }, session: Session | null): Promise<boolean> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {
@@ -346,12 +346,12 @@ export const agentService = {
             const response = await fetch(`${API_Base}/v1/agent/sessions/${sessionId}`, {
                 method: 'PATCH',
                 headers,
-                body: JSON.stringify({ title })
+                body: JSON.stringify(updates)
             });
 
             return response.ok;
         } catch (error) {
-            console.error("Rename Session Error:", error);
+            console.error("Update Session Error:", error);
             return false;
         }
     },

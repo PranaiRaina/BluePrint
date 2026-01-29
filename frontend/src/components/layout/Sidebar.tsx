@@ -8,17 +8,21 @@ interface SidebarProps {
     session: Session;
     className?: string;
     activeSessionId: string;
-    onSessionSelect: (sessionId: string) => void;
+    onSessionSelect: (session: ChatSession) => void;
     onNewChat: () => void;
+    refreshTrigger: number;
 }
 
 interface ChatSession {
     session_id: string;
     title: string;
     created_at: string;
+    metadata?: string;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessionId, onSessionSelect, onNewChat }) => {
+export type { ChatSession };
+
+const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessionId, onSessionSelect, onNewChat, refreshTrigger }) => {
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [collapsed, setCollapsed] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessio
     React.useEffect(() => {
         loadSessions();
         // Refresh every minute to keep relative times usage (optional) or just on mount
-    }, [session]);
+    }, [session, refreshTrigger]);
 
     // Expose a refresh method or listen to events if needed, but simple prop trigger is easiest
     // For now, we load on mount. 
@@ -67,9 +71,15 @@ const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessio
         yesterday.setDate(yesterday.getDate() - 1);
 
         let key = 'Older';
-        if (date.toDateString() === today.toDateString()) key = 'Today';
-        else if (date.toDateString() === yesterday.toDateString()) key = 'Yesterday';
-        else if (date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)) key = 'Previous 7 Days';
+
+        // Check if date is today (or future, to handle timezone discrepencies)
+        const isToday = date.toDateString() === today.toDateString() || date > today;
+        const isYesterday = date.toDateString() === yesterday.toDateString();
+        const isLast7Days = date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        if (isToday) key = 'Today';
+        else if (isYesterday) key = 'Yesterday';
+        else if (isLast7Days) key = 'Previous 7 Days';
 
         if (!groups[key]) groups[key] = [];
         groups[key].push(s);
@@ -81,11 +91,11 @@ const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessio
     return (
         <motion.div
             animate={{ width: collapsed ? 64 : 260 }}
-            className={`flex flex-col h-[calc(100vh-64px)] bg-black/40 backdrop-blur-xl border-r border-white/10 transition-all duration-300 ${className}`}
+            className={`flex flex-col h-[calc(100vh-64px)] bg-black/40 backdrop-blur-xl border-r border-white/10 transition-all duration-300 overflow-hidden ${className}`}
         >
             {/* Header / Toggle */}
             <div className="p-4 flex items-center justify-between border-b border-white/5">
-                {!collapsed && <span className="text-sm font-medium text-slate-400">History</span>}
+                {!collapsed && <span className="text-sm font-medium text-slate-400 whitespace-nowrap">History</span>}
                 <button
                     onClick={() => setCollapsed(!collapsed)}
                     className="p-1 hover:bg-white/10 rounded text-slate-400 transition-colors"
@@ -101,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessio
                     className={`w-full flex items-center gap-2 p-3 rounded-xl border border-white/10 hover:border-primary/50 hover:bg-white/5 transition-all group ${collapsed ? 'justify-center' : ''}`}
                 >
                     <Plus className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
-                    {!collapsed && <span className="text-sm font-medium text-white">New Chat</span>}
+                    {!collapsed && <span className="text-sm font-medium text-white whitespace-nowrap">New Chat</span>}
                 </button>
             </div>
 
@@ -118,30 +128,39 @@ const Sidebar: React.FC<SidebarProps> = ({ session, className = '', activeSessio
                 {groupOrder.map(group => {
                     const groupSessions = groupedSessions[group];
                     if (!groupSessions || groupSessions.length === 0) return null;
-                    if (collapsed) return null; // Don't show groups when collapsed, maybe just icons?
+                    if (collapsed) {
+                        // When collapsed, we merge everything or just show them in order? 
+                        // To keep it simple, we just render the sessions without group headers, iterate anyway
+                    }
 
                     return (
                         <div key={group}>
-                            <h3 className="px-3 text-xs font-semibold text-slate-500 mb-2">{group}</h3>
+                            {!collapsed && <h3 className="px-3 text-xs font-semibold text-slate-500 mb-2 whitespace-nowrap">{group}</h3>}
                             <div className="space-y-1">
                                 {groupSessions.map(session => (
                                     <button
                                         key={session.session_id}
-                                        onClick={() => onSessionSelect(session.session_id)}
+                                        onClick={() => onSessionSelect(session)}
+                                        title={collapsed ? session.title : undefined}
                                         className={`group w-full text-left p-2 rounded-lg text-sm flex items-center gap-3 transition-colors relative 
                                             ${activeSessionId === session.session_id ? 'bg-primary/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}
+                                            ${collapsed ? 'justify-center' : ''}
                                         `}
                                     >
-                                        <MessageSquare size={16} className={activeSessionId === session.session_id ? 'text-primary' : 'opacity-50'} />
-                                        <span className="truncate flex-1">{session.title || "Untitled Chat"}</span>
+                                        <MessageSquare size={16} className={`shrink-0 ${activeSessionId === session.session_id ? 'text-primary' : 'opacity-50'}`} />
 
-                                        {/* Delete Action (Hover only) */}
-                                        <div
-                                            onClick={(e) => handleDelete(e, session.session_id)}
-                                            className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded text-red-400 transition-all"
-                                        >
-                                            <Trash2 size={12} />
-                                        </div>
+                                        {!collapsed && (
+                                            <>
+                                                <span className="truncate flex-1">{session.title || "Untitled Chat"}</span>
+                                                {/* Delete Action (Hover only) */}
+                                                <div
+                                                    onClick={(e) => handleDelete(e, session.session_id)}
+                                                    className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded text-red-400 transition-all"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </div>
+                                            </>
+                                        )}
                                     </button>
                                 ))}
                             </div>

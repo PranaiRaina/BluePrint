@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Brain, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import Navbar from '../components/layout/Navbar';
-import Sidebar from '../components/layout/Sidebar';
+import Sidebar, { type ChatSession } from '../components/layout/Sidebar';
 import UploadZone from '../components/views/UploadZone';
 import ChatView from '../components/views/ChatView';
 import StockAnalyticsView from '../components/views/StockAnalyticsView';
@@ -22,28 +22,18 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks'>('overview');
     // Session Management
     const [currentSessionId, setCurrentSessionId] = useState<string>('new');
+    const [initialChatQuery, setInitialChatQuery] = useState('');
+    const [refreshSidebar, setRefreshSidebar] = useState(0);
 
     const handleNewChat = () => {
         setCurrentSessionId('new');
+        setInitialChatQuery('');
         setIsLifted(false);
         setQuery('');
         setLoadingStage(0);
         setMockInsight(null);
-        if (activeTab !== 'overview' && activeTab !== 'chat') {
-            setActiveTab('overview');
-        }
+        setActiveTab('overview');
     };
-
-    const handleSessionSelect = (sessionId: string) => {
-        setCurrentSessionId(sessionId);
-        setActiveTab('chat');
-    };
-
-    const [query, setQuery] = useState('');
-    const [isLifted, setIsLifted] = useState(false);
-    const [loadingStage, setLoadingStage] = useState(0); // 0: Idle, 1: Reading, 2: Computing, 3: Done
-    const [mockInsight, setMockInsight] = useState<{ hard: { score: string, yield: string, conf: string }, soft: { source: string, quote: string, strategy: string } } | null>(null);
-    const [extractedTickers, setExtractedTickers] = useState<string[]>([]);
 
     // Company name to ticker mapping for common stocks
     const COMPANY_TO_TICKER: Record<string, string> = {
@@ -107,6 +97,41 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         return [...new Set(foundTickers)]; // Deduplicate
     };
 
+    const handleSessionSelect = (session: ChatSession) => {
+        setCurrentSessionId(session.session_id);
+        setInitialChatQuery('');
+        setActiveTab('chat');
+
+        // Restore state from metadata
+        if (session.metadata) {
+            try {
+                const meta = JSON.parse(session.metadata);
+                if (meta.extractedTickers) {
+                    setExtractedTickers(meta.extractedTickers);
+                } else {
+                    setExtractedTickers([]);
+                }
+            } catch (e) {
+                console.error("Failed to parse session metadata", e);
+                setExtractedTickers([]);
+            }
+        } else {
+            // Fallback for sessions with no metadata (old sessions):
+            // Try to extract tickers from the session title
+            console.log("No metadata found, inferring tickers from title:", session.title);
+            const tickersFromTitle = extractTickers(session.title);
+            setExtractedTickers(tickersFromTitle);
+        }
+    };
+
+    const [query, setQuery] = useState('');
+    const [isLifted, setIsLifted] = useState(false);
+    const [loadingStage, setLoadingStage] = useState(0);
+    const [mockInsight, setMockInsight] = useState<{ hard: { score: string, yield: string, conf: string }, soft: { source: string, quote: string, strategy: string } } | null>(null);
+    const [extractedTickers, setExtractedTickers] = useState<string[]>([]);
+
+
+
 
 
     const handleSearch = async (e: React.FormEvent) => {
@@ -116,9 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setLoadingStage(1);
 
         try {
-            // Stage 1: Scanning (Visual)
-            await new Promise(r => setTimeout(r, 800));
-            // Instead of stage 2, we jump to showing the card (Stage 3) but empty
+            // Instant Transition
             setLoadingStage(3);
 
             // Initial empty state
@@ -143,64 +166,15 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 if (newSess?.session_id) {
                     activeSession = newSess.session_id;
                     setCurrentSessionId(activeSession);
+                    setRefreshSidebar(prev => prev + 1);
                 }
             }
 
-            let fullResponse = "";
-            let displayedResponse = "";
-
-            // Smooth Typewriter Effect
-            const typeWriter = setInterval(() => {
-                if (displayedResponse.length < fullResponse.length) {
-                    const lag = fullResponse.length - displayedResponse.length;
-                    const chunkSize = lag > 50 ? 5 : (lag > 20 ? 3 : 2);
-
-                    const nextChunk = fullResponse.slice(displayedResponse.length, displayedResponse.length + chunkSize);
-                    displayedResponse += nextChunk;
-
-                    setMockInsight(prev => ({
-                        hard: prev?.hard || { score: "...", yield: "...", conf: "..." },
-                        soft: {
-                            source: "Agent Analysis",
-                            quote: displayedResponse.substring(0, 150) + "...",
-                            strategy: displayedResponse
-                        }
-                    }));
-                }
-            }, 20);
-
-            // Stream Chat
-            await agentService.streamChat(
-                query,
-                session,
-                activeSession,
-                {
-                    onStatus: (status) => {
-                        // Optional: Store status somewhere if we want to show it
-                    },
-                    onToken: (token) => {
-                        fullResponse += token;
-                    },
-                    onComplete: () => {
-                        clearInterval(typeWriter);
-                        // Final sync
-                        setMockInsight({
-                            hard: { score: "Calculated", yield: "Dynamic", conf: "High" },
-                            soft: {
-                                source: "Agent Analysis",
-                                quote: fullResponse.substring(0, 150) + (fullResponse.length > 150 ? "..." : ""),
-                                strategy: fullResponse
-                            }
-                        });
-                        setLoadingStage(4); // Streaming Complete
-                    },
-                    onError: (err) => {
-                        console.error(err);
-                        clearInterval(typeWriter);
-                        alert("Stream encountered an error.");
-                    }
-                }
-            );
+            // Redirect to Chat View with Query
+            setInitialChatQuery(query);
+            setActiveTab('chat');
+            setLoadingStage(0); // Reset dashboard loading state as we are leaving
+            setQuery(''); // Clear search bar
 
         } catch (error) {
             console.error(error);
@@ -214,26 +188,51 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         soft: { source: "---", quote: "---", strategy: "---" }
     };
 
+    // Auto-save session state (debounced)
+    useEffect(() => {
+        if (currentSessionId && currentSessionId !== 'new' && extractedTickers.length > 0) {
+            const timeoutId = setTimeout(() => {
+                const metadata = JSON.stringify({ extractedTickers });
+                agentService.updateSession(currentSessionId, { metadata }, session);
+            }, 1000); // Debounce 1s
+            return () => clearTimeout(timeoutId);
+        }
+    }, [extractedTickers, currentSessionId, session]);
+
+    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => {
+        if (tab === 'overview') {
+            // Reset to New Chat state
+            setCurrentSessionId('new');
+            setInitialChatQuery('');
+            setIsLifted(false);
+            setQuery('');
+            setLoadingStage(0);
+            setMockInsight(null);
+        }
+        setActiveTab(tab);
+    };
+
     return (
         <div className="min-h-screen bg-background relative selection:bg-primary/30">
             {/* Global Background Glow */}
             <div className="fixed top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none z-0" />
 
             {/* --- Navigation --- */}
-            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} session={session} />
+            <Navbar activeTab={activeTab} setActiveTab={handleTabChange} session={session} />
 
-            <div className="pt-16 flex h-screen">
+            <div className="pt-16 h-screen relative overflow-hidden">
 
-                {/* Sidebar - Always visible or conditional? */}
+                {/* Sidebar - Fixed, Overlay on Expand */}
                 <Sidebar
                     session={session}
                     activeSessionId={currentSessionId}
                     onSessionSelect={handleSessionSelect}
                     onNewChat={handleNewChat}
-                    className="z-20 hidden md:flex shrink-0"
+                    refreshTrigger={refreshSidebar}
+                    className="fixed left-0 top-16 bottom-0 z-50 hidden md:flex shrink-0 border-r border-white/10 bg-black/80 backdrop-blur-xl"
                 />
 
-                <div className="flex-1 overflow-y-auto relative z-10 flex flex-col items-center">
+                <div className={`w-full h-full relative z-10 flex flex-col items-center pl-0 md:pl-16 transition-all duration-300 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     {/* --- Overview View --- */}
                     {activeTab === 'overview' && (
                         <div className="flex flex-col items-center w-full w-full max-w-7xl px-4">
@@ -340,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     {/* --- Other Views --- */}
                     <div className="w-full h-full">
                         {activeTab === 'vault' && <UploadZone session={session} />}
-                        {activeTab === 'chat' && <ChatView session={session} sessionId={currentSessionId} />}
+                        {activeTab === 'chat' && <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} />}
                         {activeTab === 'stocks' && <StockAnalyticsView session={session} tickers={extractedTickers} />}
                     </div>
                 </div>
