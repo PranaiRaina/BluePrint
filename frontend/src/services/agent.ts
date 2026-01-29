@@ -271,6 +271,111 @@ export const agentService = {
             console.error("Delete Document Error:", error);
             return false;
         }
+    },
+    /**
+     * Get list of chat sessions.
+     */
+    getSessions: async (session: Session | null): Promise<any[]> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/sessions`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) {
+                return [];
+            }
+
+            const data = await response.json();
+            return data.sessions || [];
+        } catch (error) {
+            console.error("Fetch Sessions Error:", error);
+            return [];
+        }
+    },
+
+    /**
+     * Create a new session.
+     */
+    createSession: async (title: string, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/sessions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ title })
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to create session");
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Create Session Error:", error);
+            return null;
+        }
+    },
+
+    /**
+     * Rename a session.
+     */
+    renameSession: async (sessionId: string, title: string, session: Session | null): Promise<boolean> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/sessions/${sessionId}`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ title })
+            });
+
+            return response.ok;
+        } catch (error) {
+            console.error("Rename Session Error:", error);
+            return false;
+        }
+    },
+
+    /**
+     * Delete a session.
+     */
+    deleteSession: async (sessionId: string, session: Session | null): Promise<boolean> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_Base}/v1/agent/sessions/${sessionId}`, {
+                method: 'DELETE',
+                headers
+            });
+
+            return response.ok;
+        } catch (error) {
+            console.error("Delete Session Error:", error);
+            return false;
+        }
     }
 };
-

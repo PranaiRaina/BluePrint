@@ -63,11 +63,12 @@ DB_PATH = "chat_history.db"
 # Initialize Supabase client for storage
 supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_JWT_SECRET"))
 
+# Initialize DB immediately
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Check if user_id column exists, if not, add it (Migration)
+    # 1. Chat History Table
     cursor.execute("PRAGMA table_info(chat_history)")
     columns = [row[1] for row in cursor.fetchall()]
     
@@ -85,11 +86,21 @@ def init_db():
     elif "user_id" not in columns:
         print("  → Migrating DB: Adding user_id column")
         cursor.execute("ALTER TABLE chat_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'fallback-user-id'")
+    
+    # 2. Chat Sessions Table (New)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            session_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
         
     conn.commit()
     conn.close()
 
-# Initialize DB immediately
 init_db()
 
 def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
@@ -142,6 +153,25 @@ def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
                    (user_id, session_id, role, content))
     conn.commit()
     conn.close()
+    
+    # Helper to ensure session exists in `chat_sessions` if it was created implicitly
+    # (Or just update its timestamp)
+    _ensure_session_exists(user_id, session_id)
+
+def _ensure_session_exists(user_id: str, session_id: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT session_id FROM chat_sessions WHERE session_id = ?", (session_id,))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO chat_sessions (session_id, user_id, title) VALUES (?, ?, ?)", 
+                          (session_id, user_id, "New Conversation"))
+        else:
+            cursor.execute("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", (session_id,))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 # --- Data Models ---
 
@@ -152,6 +182,17 @@ class AgentRequest(BaseModel):
 class AgentResponse(BaseModel):
     final_output: str
     status: str = "success"
+
+class SessionResponse(BaseModel):
+    session_id: str
+    title: str
+    created_at: str
+    
+class CreateSessionRequest(BaseModel):
+    title: Optional[str] = "New Chat"
+    
+class UpdateSessionRequest(BaseModel):
+    title: str
 
 @app.get("/health")
 async def health_check():
@@ -526,6 +567,99 @@ async def get_analyst_ratings(ticker: str, user: dict = Depends(get_current_user
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch analyst ratings: {str(e)}")
+
+# --- Session Management Endpoints ---
+
+@app.get("/v1/agent/sessions")
+async def list_sessions(user: dict = Depends(get_current_user)):
+    """List all chat sessions for the user (Newest first)."""
+    user_id = user["sub"]
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT session_id, title, created_at FROM chat_sessions 
+            WHERE user_id = ? 
+            ORDER BY updated_at DESC
+        """, (user_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return {"sessions": [dict(row) for row in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/agent/sessions")
+async def create_session(body: CreateSessionRequest, user: dict = Depends(get_current_user)):
+    """Create a new chat session."""
+    user_id = user["sub"]
+    import uuid
+    session_id = str(uuid.uuid4())
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO chat_sessions (session_id, user_id, title)
+            VALUES (?, ?, ?)
+        """, (session_id, user_id, body.title))
+        conn.commit()
+        conn.close()
+        
+        return {"session_id": session_id, "title": body.title}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/v1/agent/sessions/{session_id}")
+async def rename_session(session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)):
+    """Rename a session."""
+    user_id = user["sub"]
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE session_id = ? AND user_id = ?
+        """, (body.title, session_id, user_id))
+        conn.commit()
+        conn.close()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/v1/agent/sessions/{session_id}")
+async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
+    """Delete a session and its history."""
+    user_id = user["sub"]
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Delete session
+        cursor.execute("DELETE FROM chat_sessions WHERE session_id = ? AND user_id = ?", (session_id, user_id))
+        
+        # Delete history
+        cursor.execute("DELETE FROM chat_history WHERE session_id = ? AND user_id = ?", (session_id, user_id))
+        
+        conn.commit()
+        conn.close()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Auto-update session timestamp on activity
+def update_session_timestamp(session_id: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", (session_id,))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 if __name__ == "__main__":
     import uvicorn

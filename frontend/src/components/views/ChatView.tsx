@@ -8,12 +8,13 @@ import remarkGfm from 'remark-gfm';
 
 interface ChatViewProps {
     session: Session;
+    sessionId: string;
 }
 
-const ChatView: React.FC<ChatViewProps> = ({ session }) => {
-    const [messages, setMessages] = useState([
-        { role: 'ai', content: "Hello. I'm Bloom, your advanced financial analyst. I have access to your uploaded documents and real-time market data. What would you like to deep dive into today?" }
-    ]);
+const ChatView: React.FC<ChatViewProps> = ({ session, sessionId }) => {
+    const defaultMessage = { role: 'ai', content: "Hello. I'm Bloom, your advanced financial analyst. I have access to your uploaded documents and real-time market data. What would you like to deep dive into today?" };
+
+    const [messages, setMessages] = useState([defaultMessage]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState("Thinking...");
@@ -21,14 +22,21 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
     useEffect(() => {
         const loadHistory = async () => {
             if (session?.user?.id) {
-                const history = await agentService.getHistory(session.user.id, session);
-                if (history && history.length > 0) {
-                    setMessages(history);
+                // Reset to default on switch
+                setMessages([defaultMessage]);
+
+                if (sessionId && sessionId !== 'new') {
+                    setIsLoading(true);
+                    const history = await agentService.getHistory(sessionId, session);
+                    if (history && history.length > 0) {
+                        setMessages(history);
+                    }
+                    setIsLoading(false);
                 }
             }
         };
         loadHistory();
-    }, [session]);
+    }, [session, sessionId]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();

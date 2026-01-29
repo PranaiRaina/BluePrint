@@ -36,20 +36,20 @@
 - [ ] Implement Push/In-App alerts for trade executions <!-- id: 50 -->
 
 ## Integrate Finn Tech Project for Stock Research
-- [ ] Explore old Finn tech project to understand its structure <!-- id: 3 -->
-- [ ] Add article references to stock ticker graph section <!-- id: 4 -->
-- [ ] Enable users to access actual articles for market research <!-- id: 5 -->
+- [x] Explore old Finn tech project to understand its structure <!-- id: 3 -->
+- [x] Add article references to stock ticker graph section <!-- id: 4 -->
+- [x] Enable users to access actual articles for market research <!-- id: 5 -->
 
 ## Real-Time Interaction (WebSockets)
-- [ ] Migrate chat endpoints from HTTP POST to **WebSockets** <!-- id: 30 -->
-- [ ] Implement streaming responses for "typing" effect <!-- id: 31 -->
+- [x] Migrate chat endpoints from HTTP POST to **WebSockets** (Implemented via **SSE**) <!-- id: 30 -->
+- [x] Implement streaming responses for "typing" effect <!-- id: 31 -->
 - [ ] Enable real-time stock price and portfolio updates via socket events <!-- id: 32 -->
 
 ## RAG Knowledge Base Management
-- [ ] Create a **Document Manager** UI (List, Delete, View uploaded files) <!-- id: 33 -->
-- [ ] Scope uploaded documents/RAG data per user <!-- id: 8 -->
-- [ ] Implement logic to delete vector embeddings when a file is deleted <!-- id: 51 -->
-- [ ] Allow users to manage their context (delete old/irrelevant files) <!-- id: 34 -->
+- [x] Create a **Document Manager** UI (List, Delete, View uploaded files) <!-- id: 33 -->
+- [x] Scope uploaded documents/RAG data per user <!-- id: 8 -->
+- [x] Implement logic to delete vector embeddings when a file is deleted <!-- id: 51 -->
+- [x] Allow users to manage their context (delete old/irrelevant files) <!-- id: 34 -->
 
 ## Security, Compliance & Production Readiness
 - [ ] **Urgent:** Make GitHub repository **Private** to protect IP and keys <!-- id: 38 -->
@@ -69,8 +69,8 @@
 - [ ] Overlay selected stock graphs on a single chart <!-- id: 18 -->
 
 ## UI Enhancements: Output Formatting & Cleanup
-- [ ] Clean up raw agent text output for better readability <!-- id: 19 -->
-- [ ] Apply consistent markdown formatting (headers, bullets, tables) <!-- id: 20 -->
+- [x] Clean up raw agent text output for better readability <!-- id: 19 -->
+- [x] Apply consistent markdown formatting (headers, bullets, tables) <!-- id: 20 -->
 - [ ] Remove verbose/repetitive phrasing from responses <!-- id: 21 -->
 
 ## UI Enhancement: Persistent Chat History
