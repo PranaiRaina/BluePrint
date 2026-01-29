@@ -58,7 +58,7 @@
 - [ ] **Credit System:** Database column `user_credits` + middleware deduction <!-- id: 40 -->
 - [ ] **Tiered Rate Limiting:** Redis-backed (Free vs Pro limits) <!-- id: 35 -->
 - [ ] **Audit Logs:** Immutable `AuditLog` table for all agent actions/trades <!-- id: 46 -->
-- [ ] **Data Isolation:** Ensure all DB queries are scoped by `user_id` from Auth token <!-- id: 6 -->
+- [x] **Data Isolation:** Ensure all DB queries are scoped by `user_id` from Auth token <!-- id: 6 -->
 - [ ] **CORS & Headers:** Configure strict CORS for production and secure HTTP headers <!-- id: 36 -->
 - [ ] **Input Validation:** Audit all Pydantic models to prevent injection/malformed data <!-- id: 37 -->
 - [ ] **Legal Guardrails:** Add UI footer "Not Financial Advice" <!-- id: 47 -->
@@ -74,7 +74,7 @@
 - [ ] Remove verbose/repetitive phrasing from responses <!-- id: 21 -->
 
 ## UI Enhancement: Persistent Chat History
-- [ ] Display previous questions and answers in the chat UI <!-- id: 22 -->
-- [ ] Load chat history on page load (from backend `/v1/agent/history`) <!-- id: 23 -->
-- [ ] Add visual separation between conversation sessions <!-- id: 24 -->
-- [ ] Consider sidebar or scrollable history panel for past conversations <!-- id: 25 -->
+- [x] Display previous questions and answers in the chat UI <!-- id: 22 -->
+- [x] Load chat history on page load (from backend `/v1/agent/history`) <!-- id: 23 -->
+- [x] Add visual separation between conversation sessions <!-- id: 24 -->
+- [x] Consider sidebar or scrollable history panel for past conversations <!-- id: 25 -->

@@ -336,7 +336,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                         </div>
                     )}
 
-                    {/* --- Other Views --- */}
                     {/* --- Other Views (Persistent Mounting) --- */}
                     <div className="w-full relative h-full">
                         <div className={`w-full h-full ${activeTab === 'vault' ? 'block' : 'hidden'}`}>
