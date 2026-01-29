@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: Optional[str] = None
 
     # Formatting
-    DISCLAIMER_TEXT: str = "Disclaimer: I am an AI, not a financial advisor. Do your own due diligence."
+    DISCLAIMER_TEXT: str = "Note: I am an AI financial analyst. My insights are for informational purposes — please verify strategies with a qualified professional."
 
     class Config:
         case_sensitive = True

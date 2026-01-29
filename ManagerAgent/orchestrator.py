@@ -13,6 +13,7 @@ from CalcAgent.src.agent import financial_agent, general_agent
 from CalcAgent.src.utils import run_with_retry
 from ManagerAgent.prompts import ORCHESTRATOR_SYNTHESIS_PROMPT
 import os
+import asyncio
 
 
 def has_uploaded_documents() -> bool:
@@ -138,7 +139,7 @@ async def orchestrate(query: str, intents: List[IntentType], user_id: str = "fal
             # Construct enriched context for calculator
             calc_context = {"results": context["results"]}
             enriched_query = f"History context: {history}\n\nUser Query: {query}"
-            result = await asyncio.wait_for(run_with_retry(financial_agent, enriched_query), timeout=30.0)
+            result = await asyncio.wait_for(run_with_retry(financial_agent, enriched_query), timeout=90.0)
             context["results"]["calculator"] = result.final_output
         
         elif intent == IntentType.GENERAL:

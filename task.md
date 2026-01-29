@@ -13,9 +13,10 @@
 - [ ] Implement background worker for heavy RAG processing and strategy backtesting <!-- id: 48 -->
 
 ## Intelligent Routing & Intent Detection (Bug Fix)
+- [x] Implement a **Semantic Router** to classify intent (Logic vs. Stock vs. RAG) <!-- id: 29 -->
 - [x] **Fix:** Fix hard bypass logic that routes company names to stock queries instead of RAG (api.py lines 163-170) <!-- id: 9 -->
 - [x] Differentiate between "stock price of Apple" vs "What does Apple say in my document?" <!-- id: 10 -->
-- [x] Implement a **Semantic Router** to classify intent (Logic vs. Stock vs. RAG) <!-- id: 29 -->
+- [x] **Fix:** Prevent over-classification/timeout on vague or negative queries (e.g. "I don't have docs")
 
 ## Auto Trading Portfolio (Paper Trading)
 - [ ] Design paper trading system architecture <!-- id: 12 -->
