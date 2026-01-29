@@ -16,9 +16,10 @@ from fastapi import Depends
 from Auth.dependencies import get_current_user
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
-from ManagerAgent.orchestrator import orchestrate
+from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from supabase import create_client, Client
-
+from fastapi.responses import StreamingResponse
+import json
 
 app = FastAPI(title="Financial Calculation Agent API")
 
@@ -233,6 +234,108 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/v1/agent/chat/stream")
+async def chat_stream(request: Request, body: AgentRequest):
+    """
+    Streaming chat endpoint using Server-Sent Events (SSE).
+    Yields JSON chunks: {"type": "token"|"status"|"error", "content": "..."}
+    """
+    # Verify Auth Manually since StreamingResponse makes Dependency injection tricky with generators
+    # But actually, we can resolve dependencies before the stream starts.
+    # However, for simplicity/safety, we'll verify the token from the header inside the stream or before.
+    # To keep it standard, let's use Depends in the signature, but we need to pass the user_id to the generator.
+    
+    # 0. Authenticate (Manual extract for stream safety or use Depends)
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+    
+    token = auth_header.split(" ")[1]
+    from Auth.verification import verify_token
+    try:
+        payload = verify_token(token)
+        user_id = payload["sub"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Token: {str(e)}")
+
+    async def event_generator():
+        try:
+            # 1. Retrieve History
+            history = get_chat_history(user_id, body.session_id)
+            
+            # 2. Analyze Intent
+            yield f"data: {json.dumps({'type': 'status', 'content': 'Analyzing intent...'})}\n\n"
+            decision = await classify_intent(body.query)
+            
+            # 3. Route & Stream
+            async def run_stream():
+                if len(decision.intents) > 1:
+                    # Multi-Intent -> Orchestrator Stream
+                    async for chunk in orchestrate_stream(body.query, decision.intents, user_id, history):
+                        yield chunk
+                
+                elif decision.primary_intent == IntentType.STOCK:
+                    from ManagerAgent.tools import ask_stock_analyst_stream
+                    async for chunk in ask_stock_analyst_stream(body.query):
+                        yield chunk
+                
+                elif decision.primary_intent == IntentType.RAG:
+                    from ManagerAgent.tools import perform_rag_search_stream
+                    yield {"type": "status", "content": "Searching documents..."}
+                    async for chunk in perform_rag_search_stream(body.query, user_id):
+                        yield chunk
+                
+                elif decision.primary_intent == IntentType.CALCULATOR:
+                    yield {"type": "status", "content": "Running calculations..."}
+                    # Calculator is currently sync/fast, so we fake stream or just yield result
+                    # But financial_agent might be slow-ish.
+                    # We'll just run it and yield the result as one token block for now or fake stream it.
+                    full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}" if history else body.query
+                    result = await run_with_retry(financial_agent, full_query)
+                    yield {"type": "token", "content": result.final_output}
+                    
+                else: # GENERAL
+                    yield {"type": "status", "content": "Thinking..."}
+                    full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}" if history else body.query
+                    result = await run_with_retry(general_agent, full_query)
+                    # General agent (LangChain) could be streamed, but keeping it simple for now
+                    yield {"type": "token", "content": result.final_output}
+
+            # Execute and yield
+            full_response_buffer = []
+            
+            async for chunk in run_stream():
+                # Yield to client (SSE format) IMMEDIATELY
+                yield f"data: {json.dumps(chunk)}\n\n"
+                # Force return to event loop to allow write to socket
+                await asyncio.sleep(0)
+                
+                # Buffer tokens for history
+                if chunk["type"] == "token":
+                    content = chunk["content"]
+                    full_response_buffer.append(content)
+
+            # 4. Save History (After stream completes)
+            final_text = "".join(full_response_buffer)
+            save_chat_entry(user_id, body.session_id, "User", body.query)
+            save_chat_entry(user_id, body.session_id, "Agent", final_text)
+            
+            # End of stream
+            yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no" # Disable Nginx buffering if present
+        }
+    )
 
 from fastapi import UploadFile, File
 import shutil

@@ -99,29 +99,79 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         try {
             // Stage 1: Scanning (Visual)
             await new Promise(r => setTimeout(r, 800));
-            setLoadingStage(2);
+            // Instead of stage 2, we jump to showing the card (Stage 3) but empty
+            setLoadingStage(3);
 
-            // Stage 2: Computing (Real API Call)
-            const response = await agentService.calculate(query, session);
-
-            // Allow time for "Computing" animation if API was too fast
-            await new Promise(r => setTimeout(r, 500));
-
-            // Parse Agent Output
+            // Initial empty state
             setMockInsight({
-                hard: { score: "Calculated", yield: "Dynamic", conf: "High" },
+                hard: { score: "Calculating...", yield: "---", conf: "---" },
                 soft: {
                     source: "Agent Analysis",
-                    quote: response.final_output.substring(0, 150) + (response.final_output.length > 150 ? "..." : ""),
-                    strategy: response.final_output
+                    quote: "",
+                    strategy: ""
                 }
             });
 
-            // Extract stock tickers from user's query ONLY (not from agent response)
+            // Extract stock tickers immediately
             const tickersFromQuery = extractTickers(query);
             setExtractedTickers(tickersFromQuery);
 
-            setLoadingStage(3);
+            let fullResponse = "";
+            let displayedResponse = "";
+
+            // Smooth Typewriter Effect
+            const typeWriter = setInterval(() => {
+                if (displayedResponse.length < fullResponse.length) {
+                    const lag = fullResponse.length - displayedResponse.length;
+                    const chunkSize = lag > 50 ? 5 : (lag > 20 ? 3 : 2);
+
+                    const nextChunk = fullResponse.slice(displayedResponse.length, displayedResponse.length + chunkSize);
+                    displayedResponse += nextChunk;
+
+                    setMockInsight(prev => ({
+                        hard: prev?.hard || { score: "...", yield: "...", conf: "..." },
+                        soft: {
+                            source: "Agent Analysis",
+                            quote: displayedResponse.substring(0, 150) + "...",
+                            strategy: displayedResponse
+                        }
+                    }));
+                }
+            }, 20);
+
+            // Stream Chat
+            await agentService.streamChat(
+                query,
+                session,
+                session.user.id,
+                {
+                    onStatus: (status) => {
+                        // Optional: Store status somewhere if we want to show it
+                    },
+                    onToken: (token) => {
+                        fullResponse += token;
+                    },
+                    onComplete: () => {
+                        clearInterval(typeWriter);
+                        // Final sync
+                        setMockInsight({
+                            hard: { score: "Calculated", yield: "Dynamic", conf: "High" },
+                            soft: {
+                                source: "Agent Analysis",
+                                quote: fullResponse.substring(0, 150) + (fullResponse.length > 150 ? "..." : ""),
+                                strategy: fullResponse
+                            }
+                        });
+                        setLoadingStage(4); // Streaming Complete
+                    },
+                    onError: (err) => {
+                        console.error(err);
+                        clearInterval(typeWriter);
+                        alert("Stream encountered an error.");
+                    }
+                }
+            );
+
         } catch (error) {
             console.error(error);
             setLoadingStage(0); // Reset on error
@@ -200,26 +250,12 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                 </div>
                             </form>
 
-                            {/* Loading Indicators */}
-                            <AnimatePresence>
-                                {loadingStage > 0 && loadingStage < 3 && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0 }}
-                                        className="mt-6 flex items-center gap-3 text-ai font-mono text-sm bg-ai/10 px-4 py-2 rounded-full border border-ai/20"
-                                    >
-                                        <div className="w-2 h-2 bg-ai rounded-full animate-ping" />
-                                        {loadingStage === 1 && "SCANNING DOCUMENTS (RAG)..."}
-                                        {loadingStage === 2 && "RUNNING AGENT ANALYSIS..."}
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+
                         </motion.div>
 
                         {/* Dynamic Zones */}
                         <AnimatePresence>
-                            {loadingStage === 3 && (
+                            {loadingStage > 0 && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 40 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -233,6 +269,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                                 <Brain className="text-ai w-5 h-5" />
                                             </div>
                                             <h2 className="font-serif font-bold text-xl text-white">Agent Response</h2>
+
+
                                         </div>
 
                                         <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
@@ -242,7 +280,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                         </div>
 
                                         <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-end">
-                                            <span className="text-xs font-mono text-primary">✓ Complete</span>
+                                            {loadingStage < 4 ? (
+                                                <div className="flex items-center gap-3 text-ai font-mono text-xs bg-ai/5 px-3 py-1.5 rounded-full border border-ai/10">
+                                                    <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping" />
+                                                    {loadingStage === 1 ? "SCANNING..." : "THINKING..."}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs font-mono text-primary">✓ Complete</span>
+                                            )}
                                         </div>
                                     </div>
 

@@ -16,6 +16,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [loadingStatus, setLoadingStatus] = useState("Thinking...");
 
     useEffect(() => {
         const loadHistory = async () => {
@@ -34,25 +35,93 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
         if (!input.trim() || isLoading) return;
 
         const userQuery = input;
+
+        // Add User Message
         const newMsgs = [...messages, { role: 'user', content: userQuery }];
         setMessages(newMsgs);
         setInput('');
         setIsLoading(true);
+        setLoadingStatus("Thinking...");
+
+        // Add Empty AI Message Placeholder
+        setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+
+        let fullResponse = "";
+        let displayedResponse = "";
+
+        // Smooth Typewriter Effect
+        // We capture the stream in fullResponse, and update state from displayedResponse incrementally
+        const typeWriter = setInterval(() => {
+            if (displayedResponse.length < fullResponse.length) {
+                // Determine chunk size based on lag to prevent falling too far behind
+                const lag = fullResponse.length - displayedResponse.length;
+                const chunkSize = lag > 50 ? 5 : (lag > 20 ? 3 : 2);
+
+                const nextChunk = fullResponse.slice(displayedResponse.length, displayedResponse.length + chunkSize);
+                displayedResponse += nextChunk;
+
+                setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.role === 'ai') {
+                        return [
+                            ...prev.slice(0, -1),
+                            { ...lastMsg, content: displayedResponse }
+                        ];
+                    }
+                    return prev;
+                });
+            }
+        }, 20);
 
         try {
-            const response = await agentService.calculate(userQuery, session, session.user.id);
-
-            setMessages(prev => [...prev, {
-                role: 'ai',
-                content: response.final_output
-            }]);
+            await agentService.streamChat(
+                userQuery,
+                session,
+                session.user.id,
+                {
+                    onStatus: (status) => {
+                        setLoadingStatus(status);
+                    },
+                    onToken: (token) => {
+                        fullResponse += token;
+                    },
+                    onComplete: () => {
+                        clearInterval(typeWriter);
+                        // Ensure final synchronization
+                        setMessages(prev => {
+                            const lastMsg = prev[prev.length - 1];
+                            if (lastMsg?.role === 'ai') {
+                                return [
+                                    ...prev.slice(0, -1),
+                                    { ...lastMsg, content: fullResponse }
+                                ];
+                            }
+                            return prev;
+                        });
+                        setIsLoading(false);
+                        setLoadingStatus("Thinking...");
+                    },
+                    onError: (err) => {
+                        console.error(err);
+                        clearInterval(typeWriter);
+                        setMessages(prev => {
+                            const lastMsg = prev[prev.length - 1];
+                            const errorMsg = "\n\n[Error encountered]";
+                            if (lastMsg?.role === 'ai') {
+                                return [
+                                    ...prev.slice(0, -1),
+                                    { ...lastMsg, content: lastMsg.content + errorMsg }
+                                ];
+                            }
+                            return prev;
+                        });
+                        setIsLoading(false);
+                    }
+                }
+            );
         } catch (error) {
             console.error(error);
-            setMessages(prev => [...prev, {
-                role: 'ai',
-                content: "I encountered an error connecting to the financial brain. Please try again."
-            }]);
-        } finally {
+            clearInterval(typeWriter);
             setIsLoading(false);
         }
     };
@@ -79,13 +148,14 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai' ? 'bg-ai/20 text-ai' : 'bg-white/10 text-white'}`}>
                             {msg.role === 'ai' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </div>
-                        <div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed overflow-hidden ${msg.role === 'ai'
+                        <div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed overflow-hidden min-h-[3.5rem] ${msg.role === 'ai'
                             ? 'bg-white/5 text-slate-200 border border-white/5'
                             : 'bg-primary/20 text-white border border-primary/20'
                             }`}>
                             {msg.role === 'ai' ? (
                                 <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-white prose-strong:text-primary prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                    {msg.content.length === 0 && <span className="animate-pulse inline-block w-1.5 h-4 bg-ai/50 align-middle"></span>}
                                 </div>
                             ) : (
                                 msg.content
@@ -99,7 +169,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session }) => {
                             <Bot className="w-4 h-4 text-ai animate-pulse" />
                         </div>
                         <div className="p-4 rounded-2xl bg-white/5 text-slate-400 border border-white/5 text-xs">
-                            Thinking...
+                            {loadingStatus}
                         </div>
                     </div>
                 )}
