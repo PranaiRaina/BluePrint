@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
+import ArticleList from './ArticleList';
 
 interface StockData {
     ticker: string;
@@ -278,6 +279,11 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Articles Section */}
+            {selectedTicker && (
+                <ArticleList session={session} ticker={selectedTicker} />
             )}
         </div>
     );

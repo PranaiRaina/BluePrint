@@ -326,6 +326,22 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     user_id = user["sub"]
     return get_chat_history_json(user_id, session_id)
     
+@app.get("/v1/agent/articles/{ticker}")
+async def get_articles(ticker: str, max_articles: int = 20, user: dict = Depends(get_current_user)):
+    """
+    Get news articles with sentiment analysis for a ticker.
+    Returns articles with Positive/Negative/Neutral sentiment and overall Bullish/Bearish/Neutral.
+    """
+    try:
+        from StockAgents.services.article_service import article_service
+        result = await article_service.fetch_and_analyze(ticker.upper(), max_articles)
+        return result
+    except Exception as e:
+        print(f"Error fetching articles for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch articles: {str(e)}")
+
 @app.get("/v1/agent/stock/{ticker}")
 async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)):
     """
@@ -391,6 +407,22 @@ async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depen
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
+
+@app.get("/v1/agent/analyst/{ticker}")
+async def get_analyst_ratings(ticker: str, user: dict = Depends(get_current_user)):
+    """
+    Get Wall Street analyst ratings for a ticker.
+    Returns consensus score (0-100), recommendation, and buy/sell/hold counts.
+    """
+    try:
+        from StockAgents.services.finnhub_client import finnhub_client
+        result = await finnhub_client.get_analyst_ratings(ticker.upper())
+        return result
+    except Exception as e:
+        print(f"Error fetching analyst ratings for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch analyst ratings: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

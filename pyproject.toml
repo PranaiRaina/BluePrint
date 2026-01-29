@@ -41,6 +41,8 @@ dependencies = [
     "litellm>=1.0.0",
     "supabase>=2.27.2",
     "wolframclient>=1.4.0",
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
 ]
 
 [dependency-groups]
