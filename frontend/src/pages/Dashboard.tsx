@@ -337,10 +337,18 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     )}
 
                     {/* --- Other Views --- */}
-                    <div className="w-full h-full">
-                        {activeTab === 'vault' && <UploadZone session={session} />}
-                        {activeTab === 'chat' && <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} />}
-                        {activeTab === 'stocks' && <StockAnalyticsView session={session} tickers={extractedTickers} />}
+                    {/* --- Other Views (Persistent Mounting) --- */}
+                    <div className="w-full relative h-full">
+                        <div className={`w-full h-full ${activeTab === 'vault' ? 'block' : 'hidden'}`}>
+                            <UploadZone session={session} />
+                        </div>
+                        <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+                            <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} />
+                        </div>
+                        {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
+                        <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
+                            <StockAnalyticsView session={session} tickers={extractedTickers} />
+                        </div>
                     </div>
                 </div>
             </div>

@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
 import ArticleList from './ArticleList';
+import AnimatedCounter from '../ui/AnimatedCounter';
 
 interface StockData {
     ticker: string;
@@ -46,7 +47,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             }
         };
         fetchData();
-    }, [selectedTicker, session, timeRange]);
+    }, [selectedTicker, session.access_token, timeRange]);
 
     // Update selected ticker when tickers prop changes
     useEffect(() => {
@@ -55,7 +56,26 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
         }
     }, [tickers]);
 
-    const isPositive = (stockData?.changePercent || 0) >= 0;
+    // Calculate dynamic change based on time range
+    const getDynamicChange = () => {
+        if (!stockData?.candles || stockData.candles.length === 0) {
+            return {
+                percent: stockData?.changePercent || 0,
+                value: stockData?.change || 0
+            };
+        }
+
+        const firstPrice = stockData.candles[0].value;
+        const currentPrice = stockData.currentPrice;
+
+        const changeValue = currentPrice - firstPrice;
+        const changePercent = (changeValue / firstPrice) * 100;
+
+        return { percent: changePercent, value: changeValue };
+    };
+
+    const dynamicStats = getDynamicChange();
+    const isPositive = dynamicStats.percent >= 0;
 
     // Empty state when no tickers available
     if (tickers.length === 0) {
@@ -131,7 +151,14 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                         <div className="text-3xl font-mono text-white">${stockData.currentPrice.toFixed(2)}</div>
                         <div className={`text-lg font-bold flex items-center justify-end gap-1 ${isPositive ? 'text-primary' : 'text-red-400'}`}>
                             {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                            {isPositive ? '+' : ''}{stockData.changePercent.toFixed(2)}%
+                            <span className="flex items-center">
+                                {isPositive ? '+' : ''}
+                                <AnimatedCounter
+                                    value={dynamicStats.percent}
+                                    suffix="%"
+                                    className="relative inline-block min-w-[60px] text-right"
+                                />
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -283,7 +310,10 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
 
             {/* Articles Section */}
             {selectedTicker && (
-                <ArticleList session={session} ticker={selectedTicker} />
+                <>
+                    <div className="w-full h-px bg-gradient-to-r from-transparent via-white/30 to-transparent my-12" />
+                    <ArticleList session={session} ticker={selectedTicker} />
+                </>
             )}
         </div>
     );

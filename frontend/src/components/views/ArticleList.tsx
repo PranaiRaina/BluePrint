@@ -262,7 +262,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
             {/* Header with overall sentiment */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-white">News Sentiment</h3>
+                    <h3 className="text-lg font-semibold text-white">News Sentiment ({ticker})</h3>
                     {analystData && !analystData.error && (
                         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 text-xs text-text-secondary">
                             <Info className="w-3 h-3" />
