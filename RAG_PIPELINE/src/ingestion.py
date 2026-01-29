@@ -246,12 +246,10 @@ async def delete_document_vectors_scoped(filename: str, user_id: str):
     """
     try:
         collection = chroma_client.get_or_create_collection(name="rag_documents")
-        print(f"RAG: Deleting vectors where source == {filename} AND user_id == {user_id}")
         
         # Scoped deletion
         collection.delete(where={"$and": [{"source": filename}, {"user_id": user_id}]})
         
-        print(f"Successfully deleted vectors for {filename} (User: {user_id})")
         return True
     except Exception as e:
         print(f"Error deleting scoped vectors: {e}")

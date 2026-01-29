@@ -44,7 +44,6 @@ def retrieve(state: GraphState):
     """
     Retrieve documents based on the question.
     """
-    print("---RETRIEVE---")
     question = state["question"]
     user_id = state.get("user_id")
     
@@ -55,14 +54,12 @@ def retrieve(state: GraphState):
     # If broad, use a VERY LOW threshold to ensure we get context
     THRESHOLD = 0.15 if is_broad else 0.35
     
-    print(f"RAG: Searching for user_id == {user_id} (Broad={is_broad})")
     vectorstore = get_vectorstore()
     
     # --- AGGRESSIVE RETRIEVAL FOR BROAD QUERIES ---
     documents = []
     
     if is_broad:
-        print("--- BROAD QUERY DETECTED: Fetching user documents directly ---")
         try:
             # We fetch up to 15 recent chunks for this user regardless of semantic score
             broad_results = vectorstore.get(
@@ -78,7 +75,6 @@ def retrieve(state: GraphState):
                         page_content=broad_results['documents'][i],
                         metadata=broad_results['metadatas'][i]
                     ))
-                print(f"Direct retrieval found {len(documents)} context chunks.")
         except Exception as e:
             print(f"Direct Fetch Error: {e}")
 
@@ -102,13 +98,11 @@ def grade_documents(state: GraphState):
     """
     Determines if the retrieved documents are relevant to the question.
     """
-    print("---CHECK RELEVANCE---")
     question = state["question"].lower()
     documents = state["documents"]
     
     # --- SUMMARIZATION/BROAD OVERRIDE ---
     if any(word in question for word in ["summarize", "analyze", "overview", "what is in my", "tell me about my"]):
-        print(f"--- BROAD QUERY DETECTED: Auto-accepting {len(documents)} documents ---")
         return {"documents": documents, "question": state["question"]}
 
     # Simple grader prompt
@@ -130,7 +124,6 @@ def grade_documents(state: GraphState):
             has_relevant = True
     
     if not has_relevant:
-        print("---NO RELEVANT DOCS FOUND -> WILL SEARCH---")
         return {"documents": [], "question": question}
     
     return {"documents": filtered_docs, "question": question}
@@ -139,7 +132,6 @@ def web_search(state: GraphState):
     """
     Web search based on the re-phrased question.
     """
-    print("---WEB SEARCH---")
     question = state["question"]
     documents = state["documents"] if state.get("documents") else []
 
@@ -148,7 +140,6 @@ def web_search(state: GraphState):
             docs = web_search_tool.invoke({"query": question})
             # Tavily returns a list of dictionaries, we convert to Documents
             web_results = "\n".join([d["content"] for d in docs])
-            print(f"---WEB RESULTS SAMPLE---\n{web_results[:500]}\n------------------------")
             web_doc = Document(page_content=web_results, metadata={"source": "Tavily Search"})
             documents.append(web_doc)
         except Exception as e:
@@ -164,7 +155,6 @@ def generate(state: GraphState):
     """
     Generate answer
     """
-    print("---GENERATE---")
     question = state["question"]
     documents = state["documents"]
     
@@ -202,16 +192,13 @@ def decide_to_generate(state: GraphState):
     """
     Determines whether to generate an answer, or re-generate a question for web search.
     """
-    print("---ASSESS GRADED DOCUMENTS---")
     documents = state["documents"]
 
     if not documents:
         # No relevant documents found -> Fetch from Web
-        print("---DECISION: WEB SEARCH---")
         return "web_search"
     else:
         # We have relevant documents, so generate answer
-        print("---DECISION: GENERATE---")
         return "generate"
 
 # --- Graph Construction ---

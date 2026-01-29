@@ -118,16 +118,12 @@ async def orchestrate(query: str, intents: List[IntentType], user_id: str = "fal
         IntentType.GENERAL: 3
     }
     intents.sort(key=lambda x: ORDER_PRIORITY.get(x, 99))
-
-    print(f"Orchestrator: Executing {len(intents)} intents: {[i.value for i in intents]}")
     
     for intent in intents:
-        print(f"  → Executing: {intent.value}")
         
         if intent == IntentType.RAG:
             result = await perform_rag_search(query, user_id=user_id)
             context["results"]["rag"] = result
-            print(f"    RAG Result: {result[:100]}..." if len(result) > 100 else f"    RAG Result: {result}")
         
         elif intent == IntentType.STOCK:
             enriched_query = enrich_query_with_context(query, context)
@@ -137,23 +133,20 @@ async def orchestrate(query: str, intents: List[IntentType], user_id: str = "fal
             
             result = await ask_stock_analyst(enriched_query)
             context["results"]["stock"] = result
-            print(f"    Stock Result: {result[:100]}..." if len(result) > 100 else f"    Stock Result: {result}")
         
         elif intent == IntentType.CALCULATOR:
             # Construct enriched context for calculator
             calc_context = {"results": context["results"]}
-            result = await run_calculator(f"History context: {history}\n\nUser Query: {query}", calc_context)
-            context["results"]["calculator"] = result
-            print(f"    Calculator Result: {result[:100]}..." if len(result) > 100 else f"    Calculator Result: {result}")
+            enriched_query = f"History context: {history}\n\nUser Query: {query}"
+            result = await asyncio.wait_for(run_with_retry(financial_agent, enriched_query), timeout=30.0)
+            context["results"]["calculator"] = result.final_output
         
         elif intent == IntentType.GENERAL:
             # For general conversation, we use the general agent with full history
             enriched_query = f"Chat History:\n{history}\n\nUser Query: {query}"
-            res = await run_with_retry(general_agent, enriched_query)
-            context["results"]["general"] = res.final_output
-            print(f"    General Result: {res.final_output[:100]}...")
+            result = await run_with_retry(general_agent, enriched_query)
+            context["results"]["general"] = result.final_output
     
-    print("  \u2192 Synthesizing final response...")
     final_response = await synthesize_response(query, context["results"], history=history)
     
     return final_response

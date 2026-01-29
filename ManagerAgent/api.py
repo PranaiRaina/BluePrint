@@ -173,27 +173,22 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         
         # 1. Analyze Intent(s)
         decision = await classify_intent(body.query)
-        print(f"Router Decision: {decision.intents} | Primary: {decision.primary_intent} | Reason: {decision.reasoning}")
 
         # 2. Route based on Intent(s)
         if len(decision.intents) > 1:
             # Multi-intent query - use orchestrator
-            print(f"Multi-Intent Detected: {[i.value for i in decision.intents]}")
             final_output = await asyncio.wait_for(
                 orchestrate(body.query, decision.intents, user_id=user_id, history=history),
                 timeout=60.0  # Longer timeout for multi-step
             )
         
         elif decision.primary_intent == IntentType.STOCK:
-             print(f"Routing to Stock Analyst: {body.query}")
              final_output = await ask_stock_analyst(body.query)
         
         elif decision.primary_intent == IntentType.RAG:
-             print(f"Routing to RAG Search: {body.query}")
              final_output = await perform_rag_search(body.query, user_id=user_id)
 
         elif decision.primary_intent == IntentType.CALCULATOR:
-             print(f"Routing to Financial Calculator (Direct): {body.query}")
              
              # Construct Contextual Query for Financial Agent
              if history:
@@ -209,9 +204,6 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
              final_output = result.final_output
              
         else:
-             # GENERAL -> Send to General Agent for conversation
-             print(f"Routing to General Agent: {body.query}")
-             
              # Construct Contextual Query for General Agent
              if history:
                 full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
