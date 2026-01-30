@@ -159,15 +159,14 @@ def wolfram_risk_analysis(ticker: str, prices: list = None, metrics: dict = None
     # Step 1: Get historical prices if not provided
     if not prices:
         history = get_historical_prices(ticker, days=90)
-        if "error" in history:
-            return {"ticker": ticker, "error": "Historical data unavailable", "source": "error"}
-        prices = history.get("prices", [])
+        prices = history.get("prices", []) if "error" not in history else []
     
-    if not prices or len(prices) < 10:
-        return {"ticker": ticker, "error": "Insufficient price data", "source": "error"}
-    
-    # Step 2: Compute volatility using Wolfram (or Python fallback)
-    volatility_result = wolfram_compute_volatility(prices)
+    # Step 2: Compute volatility if prices are available
+    volatility_result = {}
+    if prices and len(prices) >= 10:
+        volatility_result = wolfram_compute_volatility(prices)
+    else:
+        volatility_result = {"error": "Insufficient price data for volatility calculation"}
     
     # Step 3: Combine results
     result = {
