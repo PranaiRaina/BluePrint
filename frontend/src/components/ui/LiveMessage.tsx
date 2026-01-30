@@ -50,8 +50,7 @@ const LiveMessage: React.FC<LiveMessageProps> = ({ contentRef, isStreaming }) =>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {displayedContent}
             </ReactMarkdown>
-            {/* Cursor */}
-            <span className="inline-block w-2 H-4 bg-primary/50 animate-pulse ml-1 align-middle">|</span>
+
         </div>
     );
 };

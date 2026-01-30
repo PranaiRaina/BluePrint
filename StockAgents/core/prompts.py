@@ -137,5 +137,3 @@ TICKER_EXTRACTOR_PROMPT = (
     "Example: 'Optimize Meta vs Tesla' -> ['META', 'TSLA'] "
     "If no companies found, return empty list []."
 )
-
-

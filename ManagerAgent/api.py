@@ -1,13 +1,10 @@
 import os
-import shutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-from agents import Runner
 from CalcAgent.src.utils import run_with_retry
 import asyncio
-import time
 from datetime import datetime, timedelta
 
 # Import GeneralAgent for fallback
@@ -20,6 +17,8 @@ from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from supabase import create_client, Client
 from fastapi.responses import StreamingResponse
 import json
+import sqlite3
+from fastapi import UploadFile, File
 
 app = FastAPI(title="Financial Calculation Agent API")
 
@@ -28,7 +27,7 @@ app = FastAPI(title="Financial Calculation Agent API")
 # 1. CORS: Allow access from frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to frontend domain
+    allow_origins=["*"],  # In production, restrict this to frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,56 +36,65 @@ app.add_middleware(
 # 2. Rate Limiting (Simple In-Memory)
 # Map IP -> [timestamp1, timestamp2, ...]
 RATE_LIMIT_STORE = {}
-RATE_LIMIT_WINDOW = 60 # seconds
-MAX_REQUESTS_PER_WINDOW = 10 
+RATE_LIMIT_WINDOW = 60  # seconds
+MAX_REQUESTS_PER_WINDOW = 10
+
 
 def check_rate_limit(client_ip: str):
     now = datetime.now()
     if client_ip not in RATE_LIMIT_STORE:
         RATE_LIMIT_STORE[client_ip] = []
-    
+
     # Filter out old requests
     window_start = now - timedelta(seconds=RATE_LIMIT_WINDOW)
-    RATE_LIMIT_STORE[client_ip] = [t for t in RATE_LIMIT_STORE[client_ip] if t > window_start]
-    
+    RATE_LIMIT_STORE[client_ip] = [
+        t for t in RATE_LIMIT_STORE[client_ip] if t > window_start
+    ]
+
     if len(RATE_LIMIT_STORE[client_ip]) >= MAX_REQUESTS_PER_WINDOW:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again later.")
-    
+        raise HTTPException(
+            status_code=429, detail="Rate limit exceeded. Try again later."
+        )
+
     RATE_LIMIT_STORE[client_ip].append(now)
 
-import sqlite3
-import json
 
 # --- Database Setup ---
-DB_PATH = "chat_history.db"
+DB_PATH = os.getenv("DB_PATH", "chat_history.db")
 
 # Initialize Supabase client for storage
-supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_JWT_SECRET"))
+supabase: Client = create_client(
+    os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_JWT_SECRET")
+)
+
 
 # Initialize DB immediately
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
+
     # 1. Chat History Table
+    # 1. Chat History Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Check for migrations
     cursor.execute("PRAGMA table_info(chat_history)")
     columns = [row[1] for row in cursor.fetchall()]
-    
-    if not columns:
-        cursor.execute("""
-            CREATE TABLE chat_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-    elif "user_id" not in columns:
+    if "user_id" not in columns:
         print("  → Migrating DB: Adding user_id column")
-        cursor.execute("ALTER TABLE chat_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'fallback-user-id'")
-    
+        cursor.execute(
+            "ALTER TABLE chat_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'fallback-user-id'"
+        )
+
     # 2. Chat Sessions Table (New)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -105,101 +113,127 @@ def init_db():
     if "metadata" not in session_columns:
         print("  → Migrating DB: Adding metadata column to chat_sessions")
         cursor.execute("ALTER TABLE chat_sessions ADD COLUMN metadata TEXT")
-        
+
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
     """Retrieve recent chat history for a session formatted as text, scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT role, content FROM chat_history 
         WHERE user_id = ? AND session_id = ? 
-        ORDER BY timestamp DESC 
+        ORDER BY timestamp DESC, id DESC 
         LIMIT ?
-    """, (user_id, session_id, limit))
+    """,
+        (user_id, session_id, limit),
+    )
     rows = cursor.fetchall()
     conn.close()
-    
+
     # Reverse to chronological order
     history = rows[::-1]
     formatted_history = "\n".join([f"{role}: {content}" for role, content in history])
     return formatted_history
 
+
 def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> List[dict]:
     """Retrieve recent chat history for a session formatted as JSON list, scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT role, content FROM chat_history 
         WHERE user_id = ? AND session_id = ? 
-        ORDER BY timestamp DESC 
+        ORDER BY timestamp DESC, id DESC 
         LIMIT ?
-    """, (user_id, session_id, limit))
+    """,
+        (user_id, session_id, limit),
+    )
     rows = cursor.fetchall()
     conn.close()
-    
+
     # Reverse to chronological order (Oldest -> Newest)
     history = rows[::-1]
-    
+
     # Map backend roles to frontend roles
     formatted_history = []
     for role, content in history:
         frontend_role = "user" if role == "User" else "ai"
         formatted_history.append({"role": frontend_role, "content": content})
-        
+
     return formatted_history
+
 
 def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
     """Save a single chat entry scoped by user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO chat_history (user_id, session_id, role, content) VALUES (?, ?, ?, ?)", 
-                   (user_id, session_id, role, content))
+    cursor.execute(
+        "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (?, ?, ?, ?)",
+        (user_id, session_id, role, content),
+    )
     conn.commit()
     conn.close()
-    
+
     # Helper to ensure session exists in `chat_sessions` if it was created implicitly
     # (Or just update its timestamp)
     _ensure_session_exists(user_id, session_id)
+
 
 def _ensure_session_exists(user_id: str, session_id: str):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT session_id FROM chat_sessions WHERE session_id = ?", (session_id,))
+        cursor.execute(
+            "SELECT session_id FROM chat_sessions WHERE session_id = ?", (session_id,)
+        )
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO chat_sessions (session_id, user_id, title) VALUES (?, ?, ?)", 
-                          (session_id, user_id, "New Conversation"))
+            cursor.execute(
+                "INSERT INTO chat_sessions (session_id, user_id, title) VALUES (?, ?, ?)",
+                (session_id, user_id, "New Conversation"),
+            )
         else:
-            cursor.execute("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", (session_id,))
+            cursor.execute(
+                "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+                (session_id,),
+            )
         conn.commit()
         conn.close()
-    except:
+    except Exception:
         pass
 
+
 # --- Data Models ---
+
 
 class AgentRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"  # Default session if none provided
-    
+
+
 class AgentResponse(BaseModel):
     final_output: str
     status: str = "success"
     extracted_tickers: List[str] = []
 
+
 class SessionResponse(BaseModel):
     session_id: str
     title: str
     created_at: str
-    
+
+
 class CreateSessionRequest(BaseModel):
     title: Optional[str] = "New Chat"
-    
+
+
 class UpdateSessionRequest(BaseModel):
     title: Optional[str] = None
     metadata: Optional[str] = None
@@ -209,21 +243,31 @@ class UpdateSessionRequest(BaseModel):
 async def health_check():
     return {"status": "ok", "service": "ManagerAgent"}
 
+
 @app.post("/v1/agent/calculate", response_model=AgentResponse)
-async def calculate(request: Request, body: AgentRequest, user: dict = Depends(get_current_user)):
+async def calculate(
+    request: Request, body: AgentRequest, user: dict = Depends(get_current_user)
+):
     """
     Run the Manager Agent on a user query.
     Protected by rate limiting, timeouts, and Authentication.
     """
+    # 1. Input Validation
+    if len(body.query) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Query too long (max 1000 characters).",
+        )
+
     try:
         # 0. Authenticate User (Dependency Injection)
         user_id = user["sub"]
-        
+
         # 3. Retrieve History
         history = get_chat_history(user_id, body.session_id)
-        
+
         # --- MULTI-INTENT ROUTING ---
-        
+
         # 1. Analyze Intent(s)
         decision = await classify_intent(body.query)
 
@@ -231,62 +275,65 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         if len(decision.intents) > 1:
             # Multi-intent query - use orchestrator
             final_output = await asyncio.wait_for(
-                orchestrate(body.query, decision.intents, user_id=user_id, history=history),
-                timeout=60.0  # Longer timeout for multi-step
+                orchestrate(
+                    body.query, decision.intents, user_id=user_id, history=history
+                ),
+                timeout=60.0,  # Longer timeout for multi-step
             )
-        
+
         elif decision.primary_intent == IntentType.STOCK:
-             final_output = await ask_stock_analyst(body.query)
-        
+            final_output = await ask_stock_analyst(body.query)
+
         elif decision.primary_intent == IntentType.RAG:
-             final_output = await perform_rag_search(body.query, user_id=user_id)
+            final_output = await perform_rag_search(body.query, user_id=user_id)
 
         elif decision.primary_intent == IntentType.CALCULATOR:
-             
-             # Construct Contextual Query for Financial Agent
-             if history:
+            # Construct Contextual Query for Financial Agent
+            if history:
                 full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
-             else:
+            else:
                 full_query = body.query
 
-             # Direct routing to Financial Agent
-             result = await asyncio.wait_for(
-                 run_with_retry(financial_agent, full_query),
-                 timeout=30.0
-             )
-             final_output = result.final_output
-             
+            # Direct routing to Financial Agent
+            result = await asyncio.wait_for(
+                run_with_retry(financial_agent, full_query), timeout=30.0
+            )
+            final_output = result.final_output
+
         else:
-             # Construct Contextual Query for General Agent
-             if history:
+            # Construct Contextual Query for General Agent
+            if history:
                 full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
-             else:
+            else:
                 full_query = body.query
 
-             # Execution with Timeout (30s)
-             result = await asyncio.wait_for(
-                 run_with_retry(general_agent, full_query),
-                 timeout=30.0
-             )
-             final_output = result.final_output
-        
+            # Execution with Timeout (30s)
+            result = await asyncio.wait_for(
+                run_with_retry(general_agent, full_query), timeout=30.0
+            )
+            final_output = result.final_output
+
         # 6. Save Interaction to History
         save_chat_entry(user_id, body.session_id, "User", body.query)
         save_chat_entry(user_id, body.session_id, "Agent", final_output)
-        
+
         return AgentResponse(
             final_output=final_output,
             status="success",
-            extracted_tickers=decision.extracted_tickers
+            extracted_tickers=decision.extracted_tickers,
         )
     except asyncio.TimeoutError:
         print(f"Timeout executing query: {body.query}")
-        raise HTTPException(status_code=504, detail="Agent execution timed out (complexity limit)")
+        raise HTTPException(
+            status_code=504, detail="Agent execution timed out (complexity limit)"
+        )
     except Exception as e:
         print(f"Error executing agent: {e}")
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @app.post("/v1/agent/chat/stream")
 async def chat_stream(request: Request, body: AgentRequest):
@@ -298,14 +345,15 @@ async def chat_stream(request: Request, body: AgentRequest):
     # But actually, we can resolve dependencies before the stream starts.
     # However, for simplicity/safety, we'll verify the token from the header inside the stream or before.
     # To keep it standard, let's use Depends in the signature, but we need to pass the user_id to the generator.
-    
+
     # 0. Authenticate (Manual extract for stream safety or use Depends)
-    auth_header = request.headers.get('Authorization')
+    auth_header = request.headers.get("Authorization")
     if not auth_header:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
-    
+
     token = auth_header.split(" ")[1]
     from Auth.verification import verify_token
+
     try:
         payload = verify_token(token)
         user_id = payload["sub"]
@@ -316,58 +364,70 @@ async def chat_stream(request: Request, body: AgentRequest):
         try:
             # 1. Retrieve History
             history = get_chat_history(user_id, body.session_id)
-            
+
             # 2. Analyze Intent
             yield f"data: {json.dumps({'type': 'status', 'content': 'Analyzing intent...'})}\n\n"
             decision = await classify_intent(body.query)
-            
+
             # Emit extracted tickers early
             if decision.extracted_tickers:
                 yield f"data: {json.dumps({'type': 'tickers', 'content': decision.extracted_tickers})}\n\n"
-            
+
             # 3. Route & Stream
             async def run_stream():
                 if len(decision.intents) > 1:
                     # Multi-Intent -> Orchestrator Stream
-                    async for chunk in orchestrate_stream(body.query, decision.intents, user_id, history):
+                    async for chunk in orchestrate_stream(
+                        body.query, decision.intents, user_id, history
+                    ):
                         yield chunk
-                
+
                 elif decision.primary_intent == IntentType.STOCK:
                     from ManagerAgent.tools import ask_stock_analyst_stream
+
                     async for chunk in ask_stock_analyst_stream(body.query):
                         yield chunk
-                
+
                 elif decision.primary_intent == IntentType.RAG:
                     from ManagerAgent.tools import perform_rag_search_stream
+
                     yield {"type": "status", "content": "Searching documents..."}
                     async for chunk in perform_rag_search_stream(body.query, user_id):
                         yield chunk
-                
+
                 elif decision.primary_intent == IntentType.CALCULATOR:
                     yield {"type": "status", "content": "Running calculations..."}
                     # Calculator is currently sync/fast, so we fake stream or just yield result
                     # But financial_agent might be slow-ish.
                     # We'll just run it and yield the result as one token block for now or fake stream it.
-                    full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}" if history else body.query
+                    full_query = (
+                        f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+                        if history
+                        else body.query
+                    )
                     result = await run_with_retry(financial_agent, full_query)
                     yield {"type": "token", "content": result.final_output}
-                    
-                else: # GENERAL
+
+                else:  # GENERAL
                     yield {"type": "status", "content": "Thinking..."}
-                    full_query = f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}" if history else body.query
+                    full_query = (
+                        f"Previous conversation:\n{history}\n\nCurrent User Query: {body.query}"
+                        if history
+                        else body.query
+                    )
                     result = await run_with_retry(general_agent, full_query)
                     # General agent (LangChain) could be streamed, but keeping it simple for now
                     yield {"type": "token", "content": result.final_output}
 
             # Execute and yield
             full_response_buffer = []
-            
+
             async for chunk in run_stream():
                 # Yield to client (SSE format) IMMEDIATELY
                 yield f"data: {json.dumps(chunk)}\n\n"
                 # Force return to event loop to allow write to socket
                 await asyncio.sleep(0)
-                
+
                 # Buffer tokens for history
                 if chunk["type"] == "token":
                     content = chunk["content"]
@@ -377,66 +437,69 @@ async def chat_stream(request: Request, body: AgentRequest):
             final_text = "".join(full_response_buffer)
             save_chat_entry(user_id, body.session_id, "User", body.query)
             save_chat_entry(user_id, body.session_id, "Agent", final_text)
-            
+
             # End of stream
             yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-            
+
     return StreamingResponse(
-        event_generator(), 
+        event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no" # Disable Nginx buffering if present
-        }
+            "X-Accel-Buffering": "no",  # Disable Nginx buffering if present
+        },
     )
 
-from fastapi import UploadFile, File
-import shutil
-import os
 
 @app.post("/v1/agent/upload")
-async def upload_document(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def upload_document(
+    file: UploadFile = File(...), user: dict = Depends(get_current_user)
+):
     """
     Upload and ingest a PDF document into Supabase Storage and RAG system.
     """
     user_id = user["sub"]
-    
+
     # 1. Validate File Type
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Only PDF files are currently supported.")
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(
+            status_code=400, detail="Only PDF files are currently supported."
+        )
 
     # 2. Upload to Supabase Storage
     # Path: {user_id}/{filename}
     try:
         file_content = await file.read()
         storage_path = f"{user_id}/{file.filename}"
-        
-        # Check if bucket exists/create logic is handled in Dashboard, 
+
+        # Check if bucket exists/create logic is handled in Dashboard,
         # but here we just upload to 'rag-documents' bucket
-        res = supabase.storage.from_("rag-documents").upload(
-            path=storage_path,
-            file=file_content,
-            file_options={"upsert": "true"}
+        supabase.storage.from_("rag-documents").upload(
+            path=storage_path, file=file_content, file_options={"upsert": "true"}
         )
-        
+
         # 3. Process with Ingestion Pipeline for RAG
-        # Note: process_pdf currently expects a local path. 
+        # Note: process_pdf currently expects a local path.
         # Refactoring ingestion.py to accept user_id and content/path.
         from RAG_PIPELINE.src.ingestion import process_pdf_scoped
-        
+
         result = await process_pdf_scoped(file.filename, file_content, user_id)
-        
+
         return {"status": "success", "message": result, "filename": file.filename}
-        
+
     except Exception as e:
         print(f"Upload failed: {e}")
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Upload/Ingestion failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Upload/Ingestion failed: {str(e)}"
+        )
+
 
 @app.delete("/v1/agent/documents/{filename}")
 async def delete_document(filename: str, user: dict = Depends(get_current_user)):
@@ -449,16 +512,18 @@ async def delete_document(filename: str, user: dict = Depends(get_current_user))
     try:
         # 1. Delete from Vector DB
         from RAG_PIPELINE.src.ingestion import delete_document_vectors_scoped
+
         await delete_document_vectors_scoped(filename, user_id)
 
         # 2. Delete from Supabase Storage
         supabase.storage.from_("rag-documents").remove([storage_path])
-                 
+
         return {"status": "success", "message": f"Deleted {filename}"}
 
     except Exception as e:
         print(f"Deletion failed: {e}")
         raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+
 
 @app.get("/v1/agent/documents")
 async def list_documents(user: dict = Depends(get_current_user)):
@@ -469,14 +534,15 @@ async def list_documents(user: dict = Depends(get_current_user)):
     try:
         # List files in the user's specific folder in the bucket
         res = supabase.storage.from_("rag-documents").list(path=user_id)
-        
+
         # Supabase returns a list of file info objects
-        files = [f['name'] for f in res if f['name'].endswith('.pdf')]
-        
+        files = [f["name"] for f in res if f["name"].endswith(".pdf")]
+
         return {"documents": files}
     except Exception as e:
         print(f"Error listing documents: {e}")
         return {"documents": []}
+
 
 @app.get("/v1/agent/history")
 async def get_history(session_id: str, user: dict = Depends(get_current_user)):
@@ -485,25 +551,35 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     user_id = user["sub"]
     return get_chat_history_json(user_id, session_id)
-    
+
+
 @app.get("/v1/agent/articles/{ticker}")
-async def get_articles(ticker: str, max_articles: int = 20, user: dict = Depends(get_current_user)):
+async def get_articles(
+    ticker: str, max_articles: int = 20, user: dict = Depends(get_current_user)
+):
     """
     Get news articles with sentiment analysis for a ticker.
     Returns articles with Positive/Negative/Neutral sentiment and overall Bullish/Bearish/Neutral.
     """
     try:
         from StockAgents.services.article_service import article_service
+
         result = await article_service.fetch_and_analyze(ticker.upper(), max_articles)
         return result
     except Exception as e:
         print(f"Error fetching articles for {ticker}: {e}")
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to fetch articles: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch articles: {str(e)}"
+        )
+
 
 @app.get("/v1/agent/stock/{ticker}")
-async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)):
+async def get_stock_data(
+    ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)
+):
     """
     Get real-time stock quote and price history for a ticker.
     Returns data formatted for frontend charting.
@@ -511,46 +587,56 @@ async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depen
     try:
         # Import FinnhubClient
         from StockAgents.services.finnhub_client import finnhub_client
-        
+
         # Fetch quote and candles in parallel
         quote = await finnhub_client.get_quote(ticker.upper())
-        candles = await finnhub_client.get_candles(ticker.upper(), time_range=time_range)
-        
+        candles = await finnhub_client.get_candles(
+            ticker.upper(), time_range=time_range
+        )
+
         # Format candles for recharts
         chart_data = []
         if candles.get("s") == "ok" and candles.get("c"):
             c = candles.get("c", [])
             t = candles.get("t", [])
-            o = candles.get("o", [0] * len(c)) # Fallback if missing
+            o = candles.get("o", [0] * len(c))  # Fallback if missing
             h = candles.get("h", [0] * len(c))
-            l = candles.get("l", [0] * len(c))
-            
+            lows = candles.get("l", [0] * len(c))
+
             for i in range(len(c)):
                 price = c[i]
                 timestamp = t[i]
-                
+
                 # Convert timestamp to readable date/time
                 # For intraday (1d, 1w), show Time. For daily (1m+), show Date.
                 from datetime import datetime, timezone
-                
+
                 if time_range == "1d":
-                     # Intraday 1D: Show Time only
-                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%H:%M")
+                    # Intraday 1D: Show Time only
+                    time_str = datetime.fromtimestamp(
+                        timestamp, tz=timezone.utc
+                    ).strftime("%H:%M")
                 elif time_range == "1w":
-                     # Intraday 1W: Show Date + Time so frontend can detect day changes
-                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%b %d %H:%M")
+                    # Intraday 1W: Show Date + Time so frontend can detect day changes
+                    time_str = datetime.fromtimestamp(
+                        timestamp, tz=timezone.utc
+                    ).strftime("%b %d %H:%M")
                 else:
-                     # Daily: Show Date (UTC midnight)
-                     time_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%b %d")
-                
-                chart_data.append({
-                    "time": time_str,
-                    "value": round(price, 2),
-                    "open": round(o[i], 2),
-                    "high": round(h[i], 2),
-                    "low": round(l[i], 2),
-                })
-        
+                    # Daily: Show Date (UTC midnight)
+                    time_str = datetime.fromtimestamp(
+                        timestamp, tz=timezone.utc
+                    ).strftime("%b %d")
+
+                chart_data.append(
+                    {
+                        "time": time_str,
+                        "value": round(price, 2),
+                        "open": round(o[i], 2),
+                        "high": round(h[i], 2),
+                        "low": round(lows[i], 2),
+                    }
+                )
+
         return {
             "ticker": ticker.upper(),
             "currentPrice": quote.get("c", 0),
@@ -560,13 +646,17 @@ async def get_stock_data(ticker: str, time_range: str = "3m", user: dict = Depen
             "low": quote.get("l", 0),
             "open": quote.get("o", 0),
             "previousClose": quote.get("pc", 0),
-            "candles": chart_data
+            "candles": chart_data,
         }
     except Exception as e:
         print(f"Error fetching stock data for {ticker}: {e}")
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch stock data: {str(e)}"
+        )
+
 
 @app.get("/v1/agent/analyst/{ticker}")
 async def get_analyst_ratings(ticker: str, user: dict = Depends(get_current_user)):
@@ -576,15 +666,21 @@ async def get_analyst_ratings(ticker: str, user: dict = Depends(get_current_user
     """
     try:
         from StockAgents.services.finnhub_client import finnhub_client
+
         result = await finnhub_client.get_analyst_ratings(ticker.upper())
         return result
     except Exception as e:
         print(f"Error fetching analyst ratings for {ticker}: {e}")
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to fetch analyst ratings: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch analyst ratings: {str(e)}"
+        )
+
 
 # --- Session Management Endpoints ---
+
 
 @app.get("/v1/agent/sessions")
 async def list_sessions(user: dict = Depends(get_current_user)):
@@ -594,70 +690,93 @@ async def list_sessions(user: dict = Depends(get_current_user)):
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT session_id, title, metadata, created_at FROM chat_sessions 
             WHERE user_id = ? 
             ORDER BY updated_at DESC
-        """, (user_id,))
-        
+        """,
+            (user_id,),
+        )
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return {"sessions": [dict(row) for row in rows]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/v1/agent/sessions")
-async def create_session(body: CreateSessionRequest, user: dict = Depends(get_current_user)):
+async def create_session(
+    body: CreateSessionRequest, user: dict = Depends(get_current_user)
+):
     """Create a new chat session."""
     user_id = user["sub"]
     import uuid
+
     session_id = str(uuid.uuid4())
-    
+
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO chat_sessions (session_id, user_id, title)
             VALUES (?, ?, ?)
-        """, (session_id, user_id, body.title))
+        """,
+            (session_id, user_id, body.title),
+        )
         conn.commit()
         conn.close()
-        
+
         return {"session_id": session_id, "title": body.title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.patch("/v1/agent/sessions/{session_id}")
-async def update_session(session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)):
+async def update_session(
+    session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)
+):
     """Update a session (rename or update metadata)."""
     user_id = user["sub"]
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
         if body.title is not None and body.metadata is not None:
-             cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE chat_sessions SET title = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE session_id = ? AND user_id = ?
-            """, (body.title, body.metadata, session_id, user_id))
+            """,
+                (body.title, body.metadata, session_id, user_id),
+            )
         elif body.title is not None:
-             cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE session_id = ? AND user_id = ?
-            """, (body.title, session_id, user_id))
+            """,
+                (body.title, session_id, user_id),
+            )
         elif body.metadata is not None:
-             cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE chat_sessions SET metadata = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE session_id = ? AND user_id = ?
-            """, (body.metadata, session_id, user_id))
-            
+            """,
+                (body.metadata, session_id, user_id),
+            )
+
         conn.commit()
         conn.close()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.delete("/v1/agent/sessions/{session_id}")
 async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
@@ -666,30 +785,42 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
         # Delete session
-        cursor.execute("DELETE FROM chat_sessions WHERE session_id = ? AND user_id = ?", (session_id, user_id))
-        
+        cursor.execute(
+            "DELETE FROM chat_sessions WHERE session_id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+
         # Delete history
-        cursor.execute("DELETE FROM chat_history WHERE session_id = ? AND user_id = ?", (session_id, user_id))
-        
+        cursor.execute(
+            "DELETE FROM chat_history WHERE session_id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+
         conn.commit()
         conn.close()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # Auto-update session timestamp on activity
 def update_session_timestamp(session_id: str):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", (session_id,))
+        cursor.execute(
+            "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+            (session_id,),
+        )
         conn.commit()
         conn.close()
-    except:
+    except Exception:
         pass
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)

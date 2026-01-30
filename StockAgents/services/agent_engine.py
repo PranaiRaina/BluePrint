@@ -10,9 +10,9 @@ Architecture:
 2. Execute sub-agents in PARALLEL
 3. Synthesize all intelligence into final response
 """
+
 import asyncio
-import re
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 import json
 from .finnhub_client import finnhub_client
@@ -22,17 +22,26 @@ from StockAgents.core.prompts import MAIN_AGENT_PROMPT, PLANNER_SYSTEM_PROMPT
 # System Prompt for the Main Agent (Portfolio Manager)
 
 
-
 # --- Planner Models ---
 
+
 class PlannerStep(BaseModel):
-    tool: str = Field(..., description="The tool to call. Allowed: market_scan, get_stock_data, quant_analysis, news_research")
+    tool: str = Field(
+        ...,
+        description="The tool to call. Allowed: market_scan, get_stock_data, quant_analysis, news_research",
+    )
     args: Dict[str, Any] = Field({}, description="Arguments for the tool call")
-    description: str = Field(..., description="Brief description of what this step does")
+    description: str = Field(
+        ..., description="Brief description of what this step does"
+    )
+
 
 class ExecutionPlan(BaseModel):
     reasoning: str = Field(..., description="Reasoning behind the plan")
-    steps: List[PlannerStep] = Field(..., description="Ordered list of steps to execute")
+    steps: List[PlannerStep] = Field(
+        ..., description="Ordered list of steps to execute"
+    )
+
 
 class LLMPlanner:
     def __init__(self, llm_client):
@@ -55,24 +64,25 @@ class LLMPlanner:
            - Use for: "why is TSLA down", "latest news on Meta", "market sentiment".
            - Returns: News summaries, sentiment analysis.
         """
-        
-    async def create_plan(self, user_query: str, user_context: Dict[str, Any] = {}) -> ExecutionPlan:
+
+    async def create_plan(
+        self, user_query: str, user_context: Dict[str, Any] = {}
+    ) -> ExecutionPlan:
         # Format prompt with tools AND user context
         context_str = json.dumps(user_context, indent=2, default=str)
         system_prompt = PLANNER_SYSTEM_PROMPT.format(
-            tools_schema=self.tools_schema,
-            user_context=context_str
+            tools_schema=self.tools_schema, user_context=context_str
         )
-        
+
         try:
             response = await self.client.chat.completions.create(
-                model="gemini-2.0-flash", # Use same model as other services
+                model="gemini-2.0-flash",  # Use same model as other services
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_query}
+                    {"role": "user", "content": user_query},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.0
+                temperature=0.0,
             )
             content = response.choices[0].message.content
             return ExecutionPlan.model_validate_json(content)
@@ -80,6 +90,7 @@ class LLMPlanner:
             print(f"Planning Error: {e}")
             # Surface error to user instead of silent fallback
             raise ValueError(f"Unable to create execution plan: {str(e)}")
+
 
 class AgentEngine:
     def __init__(self):
@@ -96,18 +107,18 @@ class AgentEngine:
         yield {"type": "status", "content": "Planning analysis..."}
         plan = await self.planner.create_plan(user_query, user_context)
         print(f"Generated Plan: {plan.dict()}")
-        
+
         # 2. Execute
         execution_results = {}
         charts_data = {}
-        
+
         # Helper to run tools safely (Same as sync)
         async def execute_step(step: PlannerStep):
             try:
                 if step.tool == "market_scan":
                     return await finnhub_client.filter_market_movers(
                         step.args.get("sector", "Technology"),
-                        min_change_percent=step.args.get("min_change_percent", 0)
+                        min_change_percent=step.args.get("min_change_percent", 0),
                     )
                 elif step.tool == "get_stock_data":
                     ticker = step.args.get("ticker")
@@ -118,34 +129,51 @@ class AgentEngine:
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
                     # Store chart data separately for frontend
                     if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", []) 
+                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
+
                     ticker = step.args.get("ticker")
                     if not ticker:
                         return {"error": "Missing ticker argument for quant_analysis"}
                     return await quant_agent.run(ticker)
                 elif step.tool == "news_research":
                     from .researcher_agent import researcher_agent
-                    return await researcher_agent.run(step.args.get("query", user_query))
+
+                    return await researcher_agent.run(
+                        step.args.get("query", user_query)
+                    )
                 else:
                     return {"error": f"Unknown tool: {step.tool}"}
             except Exception as e:
                 return {"error": f"Step failed: {str(e)}"}
 
+        # Helper for friendly status
+        tool_display_names = {
+            "market_scan": "Scanning Market...",
+            "get_stock_data": "Fetching Prices...",
+            "quant_analysis": "Analyzing Risk...",
+            "news_research": "Reading News...",
+        }
+
         # Execute steps sequentially
         for i, step in enumerate(plan.steps):
-            yield {"type": "status", "content": f"Executing: {step.description}..."}
+            display_status = tool_display_names.get(step.tool, "Working...")
+            yield {"type": "status", "content": display_status}
             result = await execute_step(step)
             execution_results[f"step_{i}_{step.tool}"] = result
-        
+
         # 3. Synthesize (Streaming)
         yield {"type": "status", "content": "Synthesizing recommendation..."}
-        async for chunk in self._generate_recommendation_stream(user_query, plan, execution_results, user_context):
+        async for chunk in self._generate_recommendation_stream(
+            user_query, plan, execution_results, user_context
+        ):
             yield chunk
 
-    async def run_workflow(self, user_query: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
+    async def run_workflow(
+        self, user_query: str, user_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Orchestrate the OODA loop: Observe, Analyze, Decide, Act.
         Dynamic execution based on LLM Plan.
@@ -156,18 +184,18 @@ class AgentEngine:
         # 1. Plan
         plan = await self.planner.create_plan(user_query, user_context)
         print(f"Generated Plan: {plan.dict()}")
-        
+
         # 2. Execute
         execution_results = {}
         charts_data = {}
-        
+
         # Helper to run tools safely
         async def execute_step(step: PlannerStep):
             try:
                 if step.tool == "market_scan":
                     return await finnhub_client.filter_market_movers(
                         step.args.get("sector", "Technology"),
-                        min_change_percent=step.args.get("min_change_percent", 0)
+                        min_change_percent=step.args.get("min_change_percent", 0),
                     )
                 elif step.tool == "get_stock_data":
                     ticker = step.args.get("ticker")
@@ -177,17 +205,21 @@ class AgentEngine:
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
                     if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", []) 
+                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
+
                     ticker = step.args.get("ticker")
                     if not ticker:
                         return {"error": "Missing ticker argument for quant_analysis"}
                     return await quant_agent.run(ticker)
                 elif step.tool == "news_research":
                     from .researcher_agent import researcher_agent
-                    return await researcher_agent.run(step.args.get("query", user_query))
+
+                    return await researcher_agent.run(
+                        step.args.get("query", user_query)
+                    )
                 else:
                     return {"error": f"Unknown tool: {step.tool}"}
             except Exception as e:
@@ -197,34 +229,45 @@ class AgentEngine:
         for i, step in enumerate(plan.steps):
             result = await execute_step(step)
             execution_results[f"step_{i}_{step.tool}"] = result
-        
+
         # 3. Synthesize
-        recommendation = await self._generate_recommendation(user_query, plan, execution_results, user_context)
-        
+        recommendation = await self._generate_recommendation(
+            user_query, plan, execution_results, user_context
+        )
+
         return {
             "intent": "dynamic_plan",
             "plan": plan.dict(),
             "analysis": {
-                "charts": charts_data, # For frontend visualization
-                "results": execution_results
+                "charts": charts_data,  # For frontend visualization
+                "results": execution_results,
             },
-            "recommendation": recommendation
+            "recommendation": recommendation,
         }
 
-    async def _generate_recommendation(self, query: str, plan: ExecutionPlan, results: Dict, user_context: Dict[str, Any] = {}) -> str:
+    async def _generate_recommendation(
+        self,
+        query: str,
+        plan: ExecutionPlan,
+        results: Dict,
+        user_context: Dict[str, Any] = {},
+    ) -> str:
         """
         Synthesize results into a final answer.
         """
         from datetime import datetime
-        
+
         context_str = json.dumps(results, indent=2, default=str)
         user_context_str = json.dumps(user_context, indent=2, default=str)
         plan_str = json.dumps(plan.dict(), indent=2)
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         # Use simple synthesis based on Main Agent Persona
-        system_prompt = MAIN_AGENT_PROMPT + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
-        
+        system_prompt = (
+            MAIN_AGENT_PROMPT
+            + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
+        )
+
         user_msg = f"""
         Current Date: {current_date}
         User Query: {query}
@@ -271,34 +314,43 @@ class AgentEngine:
             3. **Verdict** (Conclusion)
         - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
         """
-        
+
         try:
             response = await llm_service.client.chat.completions.create(
                 model="gemini-2.0-flash",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg}
+                    {"role": "user", "content": user_msg},
                 ],
-                temperature=0.5
+                temperature=0.5,
             )
             return response.choices[0].message.content
         except Exception as e:
             return f"Error generating recommendation: {e}. Raw Data: {str(results)}"
 
-    async def _generate_recommendation_stream(self, query: str, plan: ExecutionPlan, results: Dict, user_context: Dict[str, Any] = {}):
+    async def _generate_recommendation_stream(
+        self,
+        query: str,
+        plan: ExecutionPlan,
+        results: Dict,
+        user_context: Dict[str, Any] = {},
+    ):
         """
         Streamed synthesis.
         """
         from datetime import datetime
-        
+
         context_str = json.dumps(results, indent=2, default=str)
         user_context_str = json.dumps(user_context, indent=2, default=str)
         plan_str = json.dumps(plan.dict(), indent=2)
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         # Use simple synthesis based on Main Agent Persona (Same prompt as sync)
-        system_prompt = MAIN_AGENT_PROMPT + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
-        
+        system_prompt = (
+            MAIN_AGENT_PROMPT
+            + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
+        )
+
         user_msg = f"""
         Current Date: {current_date}
         User Query: {query}
@@ -345,24 +397,25 @@ class AgentEngine:
             3. **Verdict** (Conclusion)
         - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
         """
-        
+
         try:
             stream = await llm_service.client.chat.completions.create(
                 model="gemini-2.0-flash",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg}
+                    {"role": "user", "content": user_msg},
                 ],
                 temperature=0.5,
-                stream=True
+                stream=True,
             )
-            
+
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield {"type": "token", "content": chunk.choices[0].delta.content}
-                    await asyncio.sleep(0) # Force buffer flush
-                    
+                    await asyncio.sleep(0)  # Force buffer flush
+
         except Exception as e:
             yield {"type": "token", "content": f"Error generating recommendation: {e}."}
+
 
 agent_engine = AgentEngine()

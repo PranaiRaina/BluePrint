@@ -2,26 +2,27 @@ from openai import AsyncOpenAI
 from StockAgents.core.config import settings
 import json
 from StockAgents.core.prompts import (
-    LLM_ANALYSIS_PROMPT, 
-    DATA_EXTRACTION_PROMPT, 
-    TICKER_RESOLVER_PROMPT, 
-    TICKER_EXTRACTOR_PROMPT
+    LLM_ANALYSIS_PROMPT,
+    DATA_EXTRACTION_PROMPT,
+    TICKER_RESOLVER_PROMPT,
+    TICKER_EXTRACTOR_PROMPT,
 )
+
 
 class LLMService:
     def __init__(self):
         # Initialize Gemini client via OpenAI SDK
         self.client = AsyncOpenAI(
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=settings.GOOGLE_API_KEY
+            api_key=settings.GOOGLE_API_KEY,
         )
-        self.model = "gemini-2.0-flash" # High performance model
+        self.model = "gemini-2.0-flash"  # High performance model
 
     async def analyze_context(self, query: str, context_data: dict) -> str:
         """
         Sends the user query + stock/portfolio data context to Groq for analysis.
         """
-        
+
         # Construct a system prompt that acts as a financial analyst
         system_prompt = LLM_ANALYSIS_PROMPT
 
@@ -40,7 +41,7 @@ class LLMService:
             completion = await self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
+                    {"role": "user", "content": user_message},
                 ],
                 model=self.model,
                 temperature=0.5,
@@ -57,16 +58,16 @@ class LLMService:
         Target: Extract stock holdings like {"AAPL": 5000, "TSLA": 2000}.
         """
         system_prompt = DATA_EXTRACTION_PROMPT
-        
+
         try:
             completion = await self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
+                    {"role": "user", "content": query},
                 ],
                 model=self.model,
-                temperature=0.0, # Deterministic for extraction
-                response_format={"type": "json_object"}
+                temperature=0.0,  # Deterministic for extraction
+                response_format={"type": "json_object"},
             )
             content = completion.choices[0].message.content
             return json.loads(content)
@@ -81,16 +82,16 @@ class LLMService:
         Returns just the ticker string, or None.
         """
         system_prompt = TICKER_RESOLVER_PROMPT
-        
+
         try:
             completion = await self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
+                    {"role": "user", "content": query},
                 ],
                 model=self.model,
                 temperature=0.0,
-                max_tokens=10
+                max_tokens=10,
             )
             content = completion.choices[0].message.content.strip()
             # Basic validation
@@ -106,19 +107,19 @@ class LLMService:
         Example: "Compare Apple, Meta and NVDA" -> ["AAPL", "META", "NVDA"]
         """
         system_prompt = TICKER_EXTRACTOR_PROMPT
-        
+
         try:
             completion = await self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
+                    {"role": "user", "content": query},
                 ],
                 model=self.model,
                 temperature=0.0,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
             content = completion.choices[0].message.content
-            # Expecting {"tickers": [...]} or just a list if possible? 
+            # Expecting {"tickers": [...]} or just a list if possible?
             # OpenAI JSON mode ensures valid JSON. Let's ask for specific key in prompt or parse list directly.
             # Actually, standard JSON object requirement means we should ask for a key.
             # Let's refine prompt above slightly in next step or just handle parsing.
@@ -136,5 +137,6 @@ class LLMService:
         except Exception as e:
             print(f"LLM Ticker Extraction Error: {e}")
             return []
+
 
 llm_service = LLMService()

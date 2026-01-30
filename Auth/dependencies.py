@@ -5,7 +5,10 @@ from Auth.verification import verify_token
 # Define the security scheme
 security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict:
     """
     FastAPI dependency that extracts and verifies the Bearer token.
     Returns the user payload (claims) if valid.

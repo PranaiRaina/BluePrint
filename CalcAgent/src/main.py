@@ -20,25 +20,25 @@ async def main():
     print("Type 'quit', 'exit', or 'bye' to stop.")
     print("=" * 60)
     print()
-    
+
     while True:
         try:
             query = input("You: ").strip()
-            
+
             if not query:
                 continue
-                
+
             # Handle exit commands locally so we don't send "bye" to the agent
             if query.lower() in ("quit", "exit", "q", "bye"):
                 print("Goodbye!")
                 break
-            
+
             print("\nCalculating...\n")
-            
+
             # Use retry logic to handle intermittent tool parsing errors
             result = await run_with_retry(financial_agent, query, max_retries=3)
             print(f"Agent: {result.final_output}\n")
-            
+
         except KeyboardInterrupt:
             print("\nGoodbye!")
             break

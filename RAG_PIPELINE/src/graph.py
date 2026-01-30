@@ -1,4 +1,4 @@
-from typing import Dict, TypedDict, List
+from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,6 +7,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.documents import Document
 from .ingestion import get_vectorstore
 from .config import settings
+
 
 # --- State Definition ---
 class GraphState(TypedDict):
@@ -23,13 +24,15 @@ def get_llm():
     """
     if not settings.GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY is not set.")
-    
+
     # Using gemini-2.0-flash for high speed and reasoning
-    return ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=settings.GOOGLE_API_KEY)
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash", google_api_key=settings.GOOGLE_API_KEY
+    )
+
 
 llm = get_llm()
 
-from langchain_community.tools.tavily_search import TavilySearchResults
 
 # ... (get_llm is above) ...
 
@@ -40,59 +43,63 @@ if settings.TAVILY_API_KEY:
 
 # --- Nodes ---
 
+
 def retrieve(state: GraphState):
     """
     Retrieve documents based on the question.
     """
     question = state["question"]
     user_id = state.get("user_id")
-    
+
     # --- BROAD QUERY DETECTION ---
-    is_broad = any(word in question.lower() for word in ["summarize", "analyze", "overview", "everything", "my document"])
-    
+    is_broad = any(
+        word in question.lower()
+        for word in ["summarize", "analyze", "overview", "everything", "my document"]
+    )
+
     # 2. Similarity Search
     # If broad, use a VERY LOW threshold to ensure we get context
     THRESHOLD = 0.15 if is_broad else 0.35
-    
+
     vectorstore = get_vectorstore()
-    
+
     # --- AGGRESSIVE RETRIEVAL FOR BROAD QUERIES ---
     documents = []
-    
+
     if is_broad:
         try:
             # We fetch up to 15 recent chunks for this user regardless of semantic score
             broad_results = vectorstore.get(
-                where={"user_id": user_id},
-                limit=15,
-                include=["documents", "metadatas"]
+                where={"user_id": user_id}, limit=15, include=["documents", "metadatas"]
             )
-            
-            if broad_results and broad_results['documents']:
+
+            if broad_results and broad_results["documents"]:
                 from langchain_core.documents import Document
-                for i in range(len(broad_results['documents'])):
-                    documents.append(Document(
-                        page_content=broad_results['documents'][i],
-                        metadata=broad_results['metadatas'][i]
-                    ))
+
+                for i in range(len(broad_results["documents"])):
+                    documents.append(
+                        Document(
+                            page_content=broad_results["documents"][i],
+                            metadata=broad_results["metadatas"][i],
+                        )
+                    )
         except Exception as e:
             print(f"Direct Fetch Error: {e}")
 
     # Fallback/Supplemental: Similarity Search
     if len(documents) < 5:
         results = vectorstore.similarity_search_with_relevance_scores(
-            question, 
-            k=10 if is_broad else 6,
-            filter={"user_id": user_id}
+            question, k=10 if is_broad else 6, filter={"user_id": user_id}
         )
-        
+
         for doc, score in results:
             if score >= THRESHOLD:
                 # Avoid duplicates
                 if not any(d.page_content == doc.page_content for d in documents):
                     documents.append(doc)
-            
+
     return {"documents": documents, "question": question, "user_id": user_id}
+
 
 def grade_documents(state: GraphState):
     """
@@ -100,9 +107,18 @@ def grade_documents(state: GraphState):
     """
     question = state["question"].lower()
     documents = state["documents"]
-    
+
     # --- SUMMARIZATION/BROAD OVERRIDE ---
-    if any(word in question for word in ["summarize", "analyze", "overview", "what is in my", "tell me about my"]):
+    if any(
+        word in question
+        for word in [
+            "summarize",
+            "analyze",
+            "overview",
+            "what is in my",
+            "tell me about my",
+        ]
+    ):
         return {"documents": documents, "question": state["question"]}
 
     # Simple grader prompt
@@ -110,23 +126,34 @@ def grade_documents(state: GraphState):
     If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. 
     Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
     Return only 'yes' or 'no'."""
-    
-    prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "Retrieved document: \n\n {document} \n\n User question: {question}")])
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            (
+                "human",
+                "Retrieved document: \n\n {document} \n\n User question: {question}",
+            ),
+        ]
+    )
     grader_chain = prompt | llm | StrOutputParser()
-    
+
     filtered_docs = []
     has_relevant = False
-    
+
     for doc in documents:
-        score = grader_chain.invoke({"question": question, "document": doc.page_content})
+        score = grader_chain.invoke(
+            {"question": question, "document": doc.page_content}
+        )
         if "yes" in score.lower():
             filtered_docs.append(doc)
             has_relevant = True
-    
+
     if not has_relevant:
         return {"documents": [], "question": question}
-    
+
     return {"documents": filtered_docs, "question": question}
+
 
 def web_search(state: GraphState):
     """
@@ -140,16 +167,28 @@ def web_search(state: GraphState):
             docs = web_search_tool.invoke({"query": question})
             # Tavily returns a list of dictionaries, we convert to Documents
             web_results = "\n".join([d["content"] for d in docs])
-            web_doc = Document(page_content=web_results, metadata={"source": "Tavily Search"})
+            web_doc = Document(
+                page_content=web_results, metadata={"source": "Tavily Search"}
+            )
             documents.append(web_doc)
         except Exception as e:
             print(f"Web search error: {e}")
             # Fallback if search fails
-            documents.append(Document(page_content="Web search failed.", metadata={"source": "Error"}))
+            documents.append(
+                Document(
+                    page_content="Web search failed.", metadata={"source": "Error"}
+                )
+            )
     else:
-        documents.append(Document(page_content="Web search tool is not configured (missing API Key).", metadata={"source": "System"}))
+        documents.append(
+            Document(
+                page_content="Web search tool is not configured (missing API Key).",
+                metadata={"source": "System"},
+            )
+        )
 
     return {"documents": documents, "question": question}
+
 
 def generate(state: GraphState):
     """
@@ -157,10 +196,10 @@ def generate(state: GraphState):
     """
     question = state["question"]
     documents = state["documents"]
-    
+
     # Format context
     context = "\n\n".join([doc.page_content for doc in documents])
-    
+
     # Prompt
     template = """You are a helpful financial assistant. Answer the user's question based on the following context from their documents.
 
@@ -180,12 +219,13 @@ Instructions:
 - Only add a disclaimer if the user is asking for investment advice or recommendations.
 - Only say "I couldn't find that information in your documents" if the context is completely irrelevant.
 """
-    
+
     prompt = ChatPromptTemplate.from_template(template)
     chain = prompt | llm | StrOutputParser()
     generation = chain.invoke({"context": context, "question": question})
-    
+
     return {"generation": generation}
+
 
 # --- Conditional Logic ---
 def decide_to_generate(state: GraphState):
@@ -200,6 +240,7 @@ def decide_to_generate(state: GraphState):
     else:
         # We have relevant documents, so generate answer
         return "generate"
+
 
 # --- Graph Construction ---
 workflow = StateGraph(GraphState)
