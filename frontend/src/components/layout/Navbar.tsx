@@ -46,7 +46,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
             {/* Navigation Tabs - Centered Absolute */}
             <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
                 {tabs.map((tab) => {
-                    const isActive = activeTab === tab.id;
+                    const isActive = activeTab === tab.id || (tab.id === 'overview' && activeTab === 'chat');
                     const Icon = tab.icon;
 
                     return (

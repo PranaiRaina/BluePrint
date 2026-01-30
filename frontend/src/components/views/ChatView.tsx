@@ -171,6 +171,11 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
     // Auto-Send Initial Query
     const hasSentInitial = React.useRef(false);
     useEffect(() => {
+        if (!initialQuery) {
+            hasSentInitial.current = false;
+            return;
+        }
+
         if (initialQuery && !hasSentInitial.current) {
             hasSentInitial.current = true;
             processQuery(initialQuery);

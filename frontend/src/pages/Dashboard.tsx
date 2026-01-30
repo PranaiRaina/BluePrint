@@ -51,7 +51,11 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const handleSessionSelect = (session: ChatSession) => {
         setCurrentSessionId(session.session_id);
         setInitialChatQuery('');
-        setActiveTab('chat');
+
+        // Only switch to chat tab if we are currently in Overview (Home)
+        if (activeTab === 'overview') {
+            setActiveTab('chat');
+        }
 
         // Restore state from metadata
         if (session.metadata) {
@@ -84,6 +88,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
 
 
+
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -160,8 +166,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => {
         if (tab === 'overview') {
-            // Reset to New Chat state
-            setCurrentSessionId('new');
+            // If we have an active session, go to Chat view instead of resetting
+            if (currentSessionId !== 'new') {
+                setActiveTab('chat');
+                return;
+            }
+
+            // Only reset if we are truly in 'new' session state (or explicit reset)
             setInitialChatQuery('');
             setIsLifted(false);
             setQuery('');
@@ -189,9 +200,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     onNewChat={handleNewChat}
                     refreshTrigger={refreshSidebar}
                     className="fixed left-0 top-16 bottom-0 z-50 hidden md:flex shrink-0 border-r border-white/10 bg-black/80 backdrop-blur-xl"
+                    isCollapsed={isSidebarCollapsed}
+                    onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
                 />
 
-                <div className={`w-full h-full relative z-10 flex flex-col items-center pl-0 md:pl-16 transition-all duration-300 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                <div
+                    className={`w-full h-full relative z-10 flex flex-col items-center pl-0 transition-all duration-150 ease-linear ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+                    style={{ paddingLeft: isSidebarCollapsed ? '64px' : '260px' }}
+                >
                     {/* --- Overview View --- */}
                     {activeTab === 'overview' && (
                         <div className="flex flex-col items-center w-full w-full max-w-7xl px-4">

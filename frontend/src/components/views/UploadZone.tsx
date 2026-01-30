@@ -90,7 +90,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
     };
 
     return (
-        <div className="w-full max-w-4xl mx-auto pt-10">
+        <div className="w-full max-w-5xl mx-auto pt-10 px-4 pb-20">
             <h1 className="text-3xl font-bold text-white mb-2">Data Vault</h1>
             <p className="text-text-secondary mb-8">Securely upload financial documents for generic analysis.</p>
 

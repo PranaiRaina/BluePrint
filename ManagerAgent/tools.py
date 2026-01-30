@@ -1,5 +1,6 @@
 from RAG_PIPELINE.src.graph import app_graph
 from typing import Optional
+import asyncio
 
 async def perform_rag_search(query: str, user_id: str = "fallback-user-id") -> str:
     """

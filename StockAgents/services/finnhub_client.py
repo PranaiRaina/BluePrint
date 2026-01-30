@@ -185,14 +185,14 @@ class FinnhubClient:
                     consensus_score = int((weighted + 2) * 25)
                     
                     # Determine recommendation
-                    if consensus_score >= 70:
+                    if consensus_score > 72:
                         recommendation = "STRONG BUY"
-                    elif consensus_score >= 55:
-                        recommendation = "BUY"
-                    elif consensus_score >= 45:
+                    elif consensus_score >= 65:
+                        recommendation = "MODERATE BUY"
+                    elif consensus_score >= 50:
                         recommendation = "HOLD"
-                    elif consensus_score >= 30:
-                        recommendation = "SELL"
+                    elif consensus_score >= 40:
+                        recommendation = "WEAK SELL"
                     else:
                         recommendation = "STRONG SELL"
                     

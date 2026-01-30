@@ -23,7 +23,7 @@ interface ArticlesData {
 
 interface AnalystData {
     ticker: string;
-    recommendation: 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell';
+    recommendation: 'Strong Buy' | 'Buy' | 'Moderate Buy' | 'Hold' | 'Weak Sell' | 'Sell' | 'Strong Sell';
     consensusScore: number;
     totalAnalysts: number;
     buy?: number;
@@ -56,59 +56,104 @@ const getDivergenceInfo = (
 ): DivergenceInfo | null => {
     if (!analystRec) return null;
 
-    // Normalize to handle API casing (API returns "STRONG BUY", frontend logic was "Strong Buy")
     const rec = analystRec.toUpperCase();
-
-    // Check for Bullish ratings (Strong Buy, Buy)
-    const analystBullish = ['STRONG BUY', 'BUY'].includes(rec);
-
-    // Check for Bearish ratings (Sell, Strong Sell)
-    const analystBearish = ['SELL', 'STRONG SELL'].includes(rec);
+    const analystBullish = ['STRONG BUY', 'BUY', 'MODERATE BUY'].includes(rec);
+    const analystBearish = ['SELL', 'STRONG SELL', 'WEAK SELL'].includes(rec);
+    const analystHold = rec === 'HOLD';
 
     const newsBullish = newsSentiment === 'Bullish';
     const newsBearish = newsSentiment === 'Bearish';
+    const newsNeutral = !newsBullish && !newsBearish;
 
-    // Bullish analyst + Bearish news = Potential Value
-    if (analystBullish && newsBearish) {
-        return {
-            type: 'value_opportunity',
-            title: 'Signal Divergence Detected',
-            message: 'Analysts are bullish despite negative news. This could indicate a potential value opportunity if fundamentals remain strong.',
-            icon: <Zap className="w-5 h-5" />,
-            colorClass: 'border-amber-500/50 bg-amber-500/10 text-amber-400'
-        };
+    // --- ANALYST BULLISH CASES ---
+    if (analystBullish) {
+        if (newsBullish) {
+            return {
+                type: 'aligned_bullish',
+                title: 'Strong Conviction Signal',
+                message: 'Both analysts and news sentiment align bullish. Strong momentum signal.',
+                icon: <TrendingUp className="w-5 h-5" />,
+                colorClass: 'border-green-500/50 bg-green-500/10 text-green-400'
+            };
+        }
+        if (newsNeutral) {
+            return {
+                type: 'neutral',
+                title: 'Positive Outlook',
+                message: 'Analysts are bullish while news sentiment remains neutral. Potential for fundamental growth.',
+                icon: <TrendingUp className="w-5 h-5" />,
+                colorClass: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
+            };
+        }
+        if (newsBearish) {
+            return {
+                type: 'value_opportunity',
+                title: 'Signal Divergence Detected',
+                message: 'Analysts are bullish despite negative news. This could indicate a potential value opportunity if fundamentals remain strong.',
+                icon: <Zap className="w-5 h-5" />,
+                colorClass: 'border-amber-500/50 bg-amber-500/10 text-amber-400'
+            };
+        }
     }
 
-    // Bearish analyst + Bullish news = Caution
-    if (analystBearish && newsBullish) {
-        return {
-            type: 'caution_hype',
-            title: 'Signal Divergence Detected',
-            message: 'News sentiment is positive but analysts are bearish. Exercise caution — could be hype over fundamentals.',
-            icon: <AlertTriangle className="w-5 h-5" />,
-            colorClass: 'border-orange-500/50 bg-orange-500/10 text-orange-400'
-        };
+    // --- ANALYST BEARISH CASES ---
+    if (analystBearish) {
+        if (newsBearish) {
+            return {
+                type: 'aligned_bearish',
+                title: 'Strong Avoid Signal',
+                message: 'Both analysts and news sentiment align bearish. Consider avoiding or reviewing position.',
+                icon: <TrendingDown className="w-5 h-5" />,
+                colorClass: 'border-red-500/50 bg-red-500/10 text-red-400'
+            };
+        }
+        if (newsNeutral) {
+            return {
+                type: 'neutral',
+                title: 'Negative Outlook',
+                message: 'Analysts are bearish while news sentiment is neutral. Fundamental risks may be present.',
+                icon: <TrendingDown className="w-5 h-5" />,
+                colorClass: 'border-red-500/50 bg-red-500/10 text-red-400'
+            };
+        }
+        if (newsBullish) {
+            return {
+                type: 'caution_hype',
+                title: 'Signal Divergence Detected',
+                message: 'News sentiment is positive but analysts are bearish. Exercise caution — could be hype over fundamentals.',
+                icon: <AlertTriangle className="w-5 h-5" />,
+                colorClass: 'border-orange-500/50 bg-orange-500/10 text-orange-400'
+            };
+        }
     }
 
-    // Aligned bullish
-    if (analystBullish && newsBullish) {
+    // --- ANALYST HOLD CASES ---
+    if (analystHold) {
+        if (newsBullish) {
+            return {
+                type: 'neutral',
+                title: 'Mixed Signal (Cautious Bullish)',
+                message: 'Analysts suggest holding, but news sentiment is leaning bullish. Potential for upward momentum.',
+                icon: <Info className="w-5 h-5" />,
+                colorClass: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400'
+            };
+        }
+        if (newsBearish) {
+            return {
+                type: 'neutral',
+                title: 'Mixed Signal (Cautious Bearish)',
+                message: 'Analysts suggest holding, but news sentiment is leaning bearish. Monitor for further downside risk.',
+                icon: <Info className="w-5 h-5" />,
+                colorClass: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-500' // Slightly different for better red-yellow contrast
+            };
+        }
+        // Analyst Hold + News Neutral
         return {
-            type: 'aligned_bullish',
-            title: 'Strong Conviction Signal',
-            message: 'Both analysts and news sentiment align bullish. Strong momentum signal.',
-            icon: <TrendingUp className="w-5 h-5" />,
-            colorClass: 'border-green-500/50 bg-green-500/10 text-green-400'
-        };
-    }
-
-    // Aligned bearish
-    if (analystBearish && newsBearish) {
-        return {
-            type: 'aligned_bearish',
-            title: 'Strong Avoid Signal',
-            message: 'Both analysts and news sentiment align bearish. Consider avoiding or reviewing position.',
-            icon: <TrendingDown className="w-5 h-5" />,
-            colorClass: 'border-red-500/50 bg-red-500/10 text-red-400'
+            type: 'neutral',
+            title: 'Neutral Signal',
+            message: 'Both analysts and news sentiment are neutral. No clear conviction signal at this time.',
+            icon: <Info className="w-5 h-5" />,
+            colorClass: 'border-white/20 bg-white/5 text-gray-400'
         };
     }
 
@@ -190,11 +235,33 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
             case 'STRONG BUY':
             case 'BUY':
                 return 'text-green-400';
+            case 'MODERATE BUY':
+                return 'text-emerald-300';
             case 'SELL':
             case 'STRONG SELL':
                 return 'text-red-400';
+            case 'WEAK SELL':
+                return 'text-orange-400';
             default:
                 return 'text-yellow-400';
+        }
+    };
+
+    const getAnalystBadgeStyle = (rec: string) => {
+        const r = rec?.toUpperCase() || '';
+        switch (r) {
+            case 'STRONG BUY':
+            case 'BUY':
+                return 'bg-green-500/10 border-green-500/20 text-green-200';
+            case 'MODERATE BUY':
+                return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200';
+            case 'SELL':
+            case 'STRONG SELL':
+                return 'bg-red-500/10 border-red-500/20 text-red-200';
+            case 'WEAK SELL':
+                return 'bg-orange-500/10 border-orange-500/20 text-orange-200';
+            default:
+                return 'bg-yellow-500/10 border-yellow-500/20 text-yellow-200';
         }
     };
 
@@ -217,14 +284,15 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
         );
     }
 
-    if (!data || data.articles.length === 0) {
+    if (!data) return null;
+
+    if (data.articles.length === 0) {
         return (
             <div className="mt-6 glass-card p-6">
                 <div className="text-text-secondary text-center">No articles found for {ticker}</div>
             </div>
         );
     }
-
     const divergence = getDivergenceInfo(analystData?.recommendation, data.overall_sentiment);
 
     return (
@@ -264,13 +332,13 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
                 <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-white">News Sentiment ({ticker})</h3>
                     {analystData && !analystData.error && (
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 text-xs text-text-secondary">
-                            <Info className="w-3 h-3" />
+                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium ${getAnalystBadgeStyle(analystData.recommendation)}`}>
+                            <Info className="w-3.5 h-3.5" />
                             <span>Expert: </span>
-                            <span className={`font-semibold ${getAnalystColor(analystData.recommendation)}`}>
+                            <span className="font-bold uppercase tracking-wider">
                                 {analystData.recommendation}
                             </span>
-                            <span className="text-white/30 mx-1">·</span>
+                            <span className="opacity-40 mx-1">|</span>
                             <span>{analystData.totalAnalysts} analysts</span>
                         </div>
                     )}

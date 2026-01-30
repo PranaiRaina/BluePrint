@@ -1,0 +1,15 @@
+Ticker     Score      Recommendation 
+-----------------------------------
+CAL        70         MODERATE BUY
+EQH        75         STRONG BUY
+DDL        69         MODERATE BUY
+NTLA       66         MODERATE BUY
+NVAX       66         MODERATE BUY
+CLSK       78         STRONG BUY
+IOVA       69         MODERATE BUY
+SOUN       76         STRONG BUY
+RXRX       67         MODERATE BUY
+HIMS       59         HOLD
+UAA        55         HOLD
+AI         37         STRONG SELL
+APLD       79         STRONG BUY
