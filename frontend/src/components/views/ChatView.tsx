@@ -10,6 +10,7 @@ interface ChatViewProps {
     session: Session;
     sessionId: string;
     initialQuery?: string;
+    onTickers?: (tickers: string[]) => void;
 }
 
 const getUserInitials = (email?: string) => {
@@ -17,7 +18,7 @@ const getUserInitials = (email?: string) => {
     return email.substring(0, 2).toUpperCase();
 };
 
-const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery }) => {
+const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, onTickers }) => {
 
     const [messages, setMessages] = useState<any[]>([]);
     const [input, setInput] = useState('');
@@ -115,6 +116,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery })
                     },
                     onToken: (token) => {
                         fullResponse += token;
+                    },
+                    onTickers: (tickers) => {
+                        if (onTickers) onTickers(tickers);
                     },
                     onComplete: () => {
                         clearInterval(typeWriter);

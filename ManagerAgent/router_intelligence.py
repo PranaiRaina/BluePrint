@@ -19,6 +19,7 @@ class IntentType(str, Enum):
 class RouterDecision(BaseModel):
     intents: List[IntentType] = Field(..., description="List of applicable intents in execution order.")
     primary_intent: IntentType = Field(..., description="The main intent if only one agent is needed.")
+    extracted_tickers: List[str] = Field(default=[], description="List of stock tickers (e.g., AAPL, TSLA) explicitly mentioned or inferred from company names. Empty if none.")
     reasoning: str = Field(..., description="Brief explanation of why these intents were chosen.")
 
 

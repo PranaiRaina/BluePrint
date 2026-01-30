@@ -58,7 +58,19 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
 
     // Calculate dynamic change based on time range
     const getDynamicChange = () => {
+        // For 1D view, use official daily change (Current vs Prev Close)
+        if (timeRange === '1d' && stockData) {
+            return {
+                percent: stockData.changePercent,
+                value: stockData.change
+            };
+        }
+
+        // For other ranges (1W, 1M, etc.), calculate change based on the chart period
+        // (Current Price vs First Candle Close Price)
+        // We ensure the backend fetches the 'baseline' day so the first candle's Close is the reference.
         if (!stockData?.candles || stockData.candles.length === 0) {
+            // Fallback to daily change if no candles
             return {
                 percent: stockData?.changePercent || 0,
                 value: stockData?.change || 0

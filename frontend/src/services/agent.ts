@@ -57,6 +57,7 @@ export const agentService = {
         callbacks: {
             onStatus: (status: string) => void;
             onToken: (token: string) => void;
+            onTickers?: (tickers: string[]) => void;
             onComplete: () => void;
             onError: (error: string) => void;
         }
@@ -110,6 +111,10 @@ export const agentService = {
                                 callbacks.onToken(data.content);
                             } else if (data.type === 'status') {
                                 callbacks.onStatus(data.content);
+                            } else if (data.type === 'tickers') {
+                                if (callbacks.onTickers) {
+                                    callbacks.onTickers(data.content);
+                                }
                             } else if (data.type === 'error') {
                                 callbacks.onError(data.content);
                             } else if (data.type === 'end') {

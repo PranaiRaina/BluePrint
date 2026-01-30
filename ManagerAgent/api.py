@@ -190,6 +190,7 @@ class AgentRequest(BaseModel):
 class AgentResponse(BaseModel):
     final_output: str
     status: str = "success"
+    extracted_tickers: List[str] = []
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -275,7 +276,8 @@ async def calculate(request: Request, body: AgentRequest, user: dict = Depends(g
         
         return AgentResponse(
             final_output=final_output,
-            status="success"
+            status="success",
+            extracted_tickers=decision.extracted_tickers
         )
     except asyncio.TimeoutError:
         print(f"Timeout executing query: {body.query}")
@@ -318,6 +320,10 @@ async def chat_stream(request: Request, body: AgentRequest):
             # 2. Analyze Intent
             yield f"data: {json.dumps({'type': 'status', 'content': 'Analyzing intent...'})}\n\n"
             decision = await classify_intent(body.query)
+            
+            # Emit extracted tickers early
+            if decision.extracted_tickers:
+                yield f"data: {json.dumps({'type': 'tickers', 'content': decision.extracted_tickers})}\n\n"
             
             # 3. Route & Stream
             async def run_stream():

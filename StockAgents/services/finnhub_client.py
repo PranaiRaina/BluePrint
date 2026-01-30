@@ -53,24 +53,43 @@ class FinnhubClient:
             period = "3mo"
             interval = "1d"
             
+            end_date = datetime.now()
+            start_date = None
+            period = None # We will use start/end for all except default fallback
+
             if time_range == "1d":
                 period = "1d"
                 interval = "5m"
             elif time_range == "1w":
-                period = "5d"
+                # 1 week exactly
+                start_date = end_date - timedelta(days=7)
                 interval = "15m"
             elif time_range == "1m":
-                period = "1mo"
+                # 1 month (approx 30 days)
+                # Note: We need to be careful with baseline. 
+                # If today is Jan 29, 1m ago is Dec 29.
+                start_date = end_date - timedelta(days=32)
+                interval = "1d"
+            elif time_range == "3m":
+                # 3 months (approx 91 days)
+                start_date = end_date - timedelta(days=91)
                 interval = "1d"
             elif time_range == "6m":
-                period = "6mo"
+                # 6 months (approx 182 days)
+                start_date = end_date - timedelta(days=183)
                 interval = "1d"
             elif time_range == "1y":
-                period = "1y"
+                # 1 year exactly
+                start_date = end_date - timedelta(days=365)
                 interval = "1d"
-            # Default 3m (already set)
-                
-            hist = stock.history(period=period, interval=interval)
+            
+            if start_date:
+                hist = stock.history(start=start_date, end=end_date, interval=interval)
+            elif period:    
+                hist = stock.history(period=period, interval=interval)
+            else:
+                # Fallback default
+                hist = stock.history(period="3mo", interval="1d")
             
             if hist.empty:
                 return {"s": "no_data"}

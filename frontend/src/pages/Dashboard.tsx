@@ -35,66 +35,17 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setActiveTab('overview');
     };
 
-    // Company name to ticker mapping for common stocks
-    const COMPANY_TO_TICKER: Record<string, string> = {
-        // Tech Giants
-        'apple': 'AAPL', 'microsoft': 'MSFT', 'google': 'GOOGL', 'alphabet': 'GOOGL',
-        'amazon': 'AMZN', 'meta': 'META', 'facebook': 'META', 'nvidia': 'NVDA',
-        'tesla': 'TSLA', 'netflix': 'NFLX', 'adobe': 'ADBE', 'salesforce': 'CRM',
-        'oracle': 'ORCL', 'intel': 'INTC', 'amd': 'AMD', 'ibm': 'IBM',
-        'cisco': 'CSCO', 'qualcomm': 'QCOM', 'broadcom': 'AVGO',
-        // AI & Cloud
-        'palantir': 'PLTR', 'snowflake': 'SNOW', 'datadog': 'DDOG', 'crowdstrike': 'CRWD',
-        'servicenow': 'NOW', 'splunk': 'SPLK', 'twilio': 'TWLO', 'okta': 'OKTA',
-        'cloudflare': 'NET', 'mongodb': 'MDB', 'elastic': 'ESTC',
-        // Finance
-        'jpmorgan': 'JPM', 'goldman': 'GS', 'morgan stanley': 'MS', 'visa': 'V',
-        'mastercard': 'MA', 'paypal': 'PYPL', 'square': 'SQ', 'block': 'SQ',
-        'coinbase': 'COIN', 'robinhood': 'HOOD',
-        // Retail & Consumer
-        'walmart': 'WMT', 'costco': 'COST', 'target': 'TGT', 'nike': 'NKE',
-        'starbucks': 'SBUX', 'mcdonalds': 'MCD', 'disney': 'DIS', 'coca-cola': 'KO',
-        'pepsi': 'PEP', 'pepsico': 'PEP',
-        // Healthcare
-        'johnson': 'JNJ', 'pfizer': 'PFE', 'moderna': 'MRNA', 'unitedhealth': 'UNH',
-        // Automotive
-        'ford': 'F', 'gm': 'GM', 'general motors': 'GM', 'rivian': 'RIVN', 'lucid': 'LCID',
-        // Energy
-        'exxon': 'XOM', 'chevron': 'CVX', 'shell': 'SHEL',
-        // Other
-        'uber': 'UBER', 'lyft': 'LYFT', 'airbnb': 'ABNB', 'doordash': 'DASH',
-        'zoom': 'ZM', 'spotify': 'SPOT', 'snap': 'SNAP', 'snapchat': 'SNAP',
-        'twitter': 'TWTR', 'pinterest': 'PINS', 'roblox': 'RBLX',
-        'draftkings': 'DKNG', 'peloton': 'PTON', 'shopify': 'SHOP', 'etsy': 'ETSY',
-        'c3': 'AI', 'c3.ai': 'AI', 'soundhound': 'SOUN',
-    };
-
-    // Helper to extract stock tickers from text
+    // Helper to extract stock tickers from text (Simplified Fallback)
     const extractTickers = (text: string): string[] => {
-        const lowerText = text.toLowerCase();
-        const foundTickers: string[] = [];
-
-        // 1. Check for company names in the text
-        for (const [companyName, ticker] of Object.entries(COMPANY_TO_TICKER)) {
-            if (lowerText.includes(companyName)) {
-                foundTickers.push(ticker);
-            }
-        }
-
-        // 2. Also check for direct ticker mentions (e.g., $NVDA or NVDA)
+        // Only check for direct ticker mentions (e.g., $NVDA or NVDA)
+        // This is mainly a fallback for old sessions without metadata
         const tickerRegex = /\$?([A-Z]{2,5})\b/g;
-        const upperText = text.toUpperCase();
+        const foundTickers: string[] = [];
         let match;
-        while ((match = tickerRegex.exec(upperText)) !== null) {
-            const ticker = match[1];
-            // Only add if it's a known ticker (exists as a value in our mapping)
-            const knownTickers = Object.values(COMPANY_TO_TICKER);
-            if (knownTickers.includes(ticker) && !foundTickers.includes(ticker)) {
-                foundTickers.push(ticker);
-            }
+        while ((match = tickerRegex.exec(text)) !== null) {
+            foundTickers.push(match[1]);
         }
-
-        return [...new Set(foundTickers)]; // Deduplicate
+        return [...new Set(foundTickers)];
     };
 
     const handleSessionSelect = (session: ChatSession) => {
@@ -154,10 +105,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 }
             });
 
-            // Extract stock tickers immediately
-            const tickersFromQuery = extractTickers(query);
-            setExtractedTickers(tickersFromQuery);
-
             // Create Session if New
             let activeSession = currentSessionId;
             if (activeSession === 'new') {
@@ -174,6 +121,18 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             setInitialChatQuery(query);
             setActiveTab('chat');
             setLoadingStage(0); // Reset dashboard loading state as we are leaving
+            // setQuery(''); // Do NOT clear search bar yet, wait for chat to pick it up? 
+            // Actually ChatView takes initialQuery prop. 
+            // But we need to define the onTickers callback passed to ChatView?
+            // Wait, Dashboard passes initialQuery to ChatView, and ChatView calls agentService.streamChat.
+            // So ChatView needs to be updated to accept onTickers callback or handle it internally?
+            // Actually, Dashboard holds the `extractedTickers` state which drives `StockAnalyticsView`.
+            // So ChatView needs to Bubble up the tickers to Dashboard.
+
+            // Let's check ChatView. For now, since I can't see ChatView, I assume I need to pass a callback to it.
+            // But I cannot edit ChatView in this tool call.
+            // So I will assume ChatView needs an update.
+
             setQuery(''); // Clear search bar
 
         } catch (error) {
@@ -342,7 +301,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             <UploadZone session={session} />
                         </div>
                         <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
-                            <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} />
+                            <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
                         </div>
                         {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
                         <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
