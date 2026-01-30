@@ -2,21 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Session } from '@supabase/supabase-js';
-import { agentService } from '../../services/agent';
+import { agentService, type StockData } from '../../services/agent';
 import ArticleList from './ArticleList';
 import AnimatedCounter from '../ui/AnimatedCounter';
-
-interface StockData {
-    ticker: string;
-    currentPrice: number;
-    change: number;
-    changePercent: number;
-    high: number;
-    low: number;
-    open: number;
-    previousClose: number;
-    candles: { time: string; value: number; open: number; high: number; low: number }[];
-}
 
 interface StockAnalyticsViewProps {
     session: Session;
@@ -46,15 +34,15 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                 setLoading(false);
             }
         };
-        fetchData();
-    }, [selectedTicker, session.access_token, timeRange]);
+        void fetchData();
+    }, [selectedTicker, session, timeRange]);
 
     // Update selected ticker when tickers prop changes
     useEffect(() => {
         if (tickers.length > 0 && !tickers.includes(selectedTicker)) {
             setSelectedTicker(tickers[0]);
         }
-    }, [tickers]);
+    }, [tickers, selectedTicker]);
 
     // Calculate dynamic change based on time range
     const getDynamicChange = () => {
@@ -72,8 +60,8 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
         if (!stockData?.candles || stockData.candles.length === 0) {
             // Fallback to daily change if no candles
             return {
-                percent: stockData?.changePercent || 0,
-                value: stockData?.change || 0
+                percent: stockData?.changePercent ?? 0,
+                value: stockData?.change ?? 0
             };
         }
 
@@ -127,7 +115,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             {/* Ticker Dropdown */}
             <div className="mb-6 relative">
                 <button
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    onClick={() => { setDropdownOpen(!dropdownOpen); }}
                     className="glass-card px-4 py-3 flex items-center justify-between w-64 hover:border-primary/50 transition-colors"
                 >
                     <span className="text-white font-bold">{selectedTicker}</span>
@@ -184,7 +172,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                         {['1d', '1w', '1m', '3m', '6m', '1y'].map((range) => (
                             <button
                                 key={range}
-                                onClick={() => setTimeRange(range)}
+                                onClick={() => { setTimeRange(range); }}
                                 className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${timeRange === range
                                     ? 'bg-primary text-black shadow-neon'
                                     : 'text-text-secondary hover:text-white hover:bg-white/5'
@@ -205,12 +193,13 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                         <AreaChart
                             margin={{ top: 35, right: 0, left: 0, bottom: 50 }}
                             data={stockData.candles}
-                            onMouseMove={(data) => {
-                                if (data.activePayload && data.activePayload[0]) {
-                                    setHoverData(data.activePayload[0].payload);
+                            onMouseMove={(evt) => {
+                                const activePayload = (evt as { activePayload?: { payload: unknown }[] }).activePayload;
+                                if (activePayload?.[0]) {
+                                    setHoverData(activePayload[0].payload as { open: number; high: number; low: number; value: number });
                                 }
                             }}
-                            onMouseLeave={() => setHoverData(null)}
+                            onMouseLeave={() => { setHoverData(null); }}
                         >
                             <defs>
                                 <linearGradient id="colorStock" x1="0" y1="0" x2="0" y2="1">
@@ -228,20 +217,21 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                                 interval={0}
                                 tickFormatter={(val, index) => {
                                     // 1D View: Hourly ticks only
+                                    const sVal = val as string;
                                     if (timeRange === '1d') {
-                                        return val.endsWith(':00') ? val : '';
+                                        return sVal.endsWith(':00') ? sVal : '';
                                     }
 
                                     // 1W View: Daily markers ("Jan 22")
                                     if (timeRange === '1w') {
                                         // val format: "Jan 22 10:30"
-                                        const parts = val.split(' ');
+                                        const parts = (val as string).split(' ');
                                         if (parts.length < 3) return ''; // Unexpected format
                                         const datePart = `${parts[0]} ${parts[1]}`;
 
                                         if (index === 0) return datePart;
 
-                                        const prevVal = stockData!.candles[index - 1]?.time;
+                                        const prevVal = stockData.candles[index - 1]?.time;
                                         if (!prevVal) return '';
 
                                         // Extract prev date
@@ -252,7 +242,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                                     }
 
                                     // Default (1m+): Month markers
-                                    const month = val.split(' ')[0];
+                                    const month = (val as string).split(' ')[0];
 
                                     if (index === 0) {
                                         // Edge case: If month changes within the first few ticks (overlap risk),
@@ -260,7 +250,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                                         const lookAhead = 8; // approx 25-30px width buffer
                                         let monthChangesSoon = false;
                                         for (let i = 1; i <= lookAhead; i++) {
-                                            const nextVal = stockData!.candles[index + i]?.time;
+                                            const nextVal = stockData.candles[index + i]?.time;
                                             if (nextVal) {
                                                 const nextMonth = nextVal.split(' ')[0];
                                                 if (nextMonth !== month) {
@@ -273,14 +263,14 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
                                     }
 
                                     // Check previous month
-                                    const prevVal = stockData!.candles[index - 1]?.time;
+                                    const prevVal = stockData.candles[index - 1]?.time;
                                     const prevMonth = prevVal ? prevVal.split(' ')[0] : '';
 
                                     // Only return if changed
                                     return month !== prevMonth ? month : '';
                                 }}
                             />
-                            <YAxis domain={['auto', 'auto']} stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                            <YAxis domain={['auto', 'auto']} stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val: unknown) => `$${String(val)}`} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                                 itemStyle={{ color: '#fff' }}

@@ -25,7 +25,7 @@ const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 50, className, on
             }
         }, speed);
 
-        return () => clearInterval(interval);
+        return () => { clearInterval(interval); };
     }, [text, speed, onComplete]);
 
     return (

@@ -60,7 +60,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         // Restore state from metadata
         if (session.metadata) {
             try {
-                const meta = JSON.parse(session.metadata);
+                const meta = JSON.parse(session.metadata) as { extractedTickers?: string[] };
                 if (meta.extractedTickers) {
                     setExtractedTickers(meta.extractedTickers);
                 } else {
@@ -148,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         }
     };
 
-    const data = mockInsight || {
+    const data = mockInsight ?? {
         hard: { score: "---", yield: "---", conf: "---" },
         soft: { source: "---", quote: "---", strategy: "---" }
     };
@@ -158,9 +158,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         if (currentSessionId && currentSessionId !== 'new' && extractedTickers.length > 0) {
             const timeoutId = setTimeout(() => {
                 const metadata = JSON.stringify({ extractedTickers });
-                agentService.updateSession(currentSessionId, { metadata }, session);
+                void agentService.updateSession(currentSessionId, { metadata }, session);
             }, 1000); // Debounce 1s
-            return () => clearTimeout(timeoutId);
+            return () => { clearTimeout(timeoutId); };
         }
     }, [extractedTickers, currentSessionId, session]);
 
@@ -201,7 +201,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     refreshTrigger={refreshSidebar}
                     className="fixed left-0 top-16 bottom-0 z-50 hidden md:flex shrink-0 border-r border-white/10 bg-black/80 backdrop-blur-xl"
                     isCollapsed={isSidebarCollapsed}
-                    onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                    onToggle={() => { setIsSidebarCollapsed(!isSidebarCollapsed); }}
                 />
 
                 <div
@@ -240,12 +240,12 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                                 setQuery(e.target.value);
                                                 // Auto-resize textarea
                                                 e.target.style.height = 'auto';
-                                                e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+                                                e.target.style.height = `${String(Math.min(e.target.scrollHeight, 150))}px`;
                                             }}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && !e.shiftKey) {
                                                     e.preventDefault();
-                                                    handleSearch(e);
+                                                    void handleSearch(e);
                                                 }
                                             }}
                                             placeholder="ask me anything..."

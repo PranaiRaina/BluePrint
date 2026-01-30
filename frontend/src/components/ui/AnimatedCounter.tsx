@@ -45,7 +45,7 @@ const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
                 ref.current.textContent = `${prefix}${latest.toFixed(decimals)}${suffix}`;
             }
         });
-        return () => unsubscribe();
+        return () => { unsubscribe(); };
     }, [springValue, decimals, prefix, suffix]);
 
     return (

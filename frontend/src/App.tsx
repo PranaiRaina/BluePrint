@@ -12,6 +12,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (DEV_MODE) {
       // Mock session for development testing
       setSession({
@@ -32,7 +33,7 @@ function App() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    void supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
@@ -42,7 +43,7 @@ function App() {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => { subscription.unsubscribe(); };
   }, []);
 
   return (

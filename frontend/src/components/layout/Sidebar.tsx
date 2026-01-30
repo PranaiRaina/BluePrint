@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquare, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
-import { agentService } from '../../services/agent';
+import { agentService, type ChatSession } from '../../services/agent';
 
 interface SidebarProps {
     session: Session;
@@ -13,13 +13,6 @@ interface SidebarProps {
     refreshTrigger: number;
     isCollapsed: boolean;
     onToggle: () => void;
-}
-
-interface ChatSession {
-    session_id: string;
-    title: string;
-    created_at: string;
-    metadata?: string;
 }
 
 export type { ChatSession };
@@ -37,21 +30,21 @@ const Sidebar: React.FC<SidebarProps> = ({
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Initial Load
-    React.useEffect(() => {
-        loadSessions();
-        // Refresh every minute to keep relative times usage (optional) or just on mount
-    }, [session, refreshTrigger]);
 
     // Expose a refresh method or listen to events if needed, but simple prop trigger is easiest
     // For now, we load on mount. 
 
-    const loadSessions = async () => {
+    const loadSessions = React.useCallback(async () => {
         setIsLoading(true);
         const list = await agentService.getSessions(session);
         setSessions(list);
         setIsLoading(false);
-    };
+    }, [session]);
+
+    // Initial Load
+    React.useEffect(() => {
+        void loadSessions();
+    }, [loadSessions, refreshTrigger]);
 
     const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
         e.stopPropagation();
@@ -74,7 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
 
     // Grouping logic (Today, Yesterday, etc)
-    const groupedSessions = sessions.reduce((groups, s) => {
+    const groupedSessions = (sessions || []).reduce<Record<string, ChatSession[]>>((groups, s) => {
         const date = new Date(s.created_at);
         const today = new Date();
         const yesterday = new Date();
@@ -83,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         let key = 'Older';
 
         // Check if date is today (or future, to handle timezone discrepencies)
-        const isToday = date.toDateString() === today.toDateString() || date > today;
+        const isToday = date.toDateString() === today.toDateString();
         const isYesterday = date.toDateString() === yesterday.toDateString();
         const isLast7Days = date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -91,10 +84,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         else if (isYesterday) key = 'Yesterday';
         else if (isLast7Days) key = 'Previous 7 Days';
 
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(s);
+        if (Object.prototype.hasOwnProperty.call(groups, key)) {
+            groups[key].push(s);
+        } else {
+            groups[key] = [s];
+        }
         return groups;
-    }, {} as Record<string, ChatSession[]>);
+    }, {});
 
     const groupOrder = ['Today', 'Yesterday', 'Previous 7 Days', 'Older'];
 
@@ -137,8 +133,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
 
                 {groupOrder.map(group => {
-                    const groupSessions = groupedSessions[group];
-                    if (!groupSessions || groupSessions.length === 0) return null;
+                    const groupSessions = groupedSessions[group] || [];
+                    if (groupSessions.length === 0) return null;
+
                     if (isCollapsed) {
                         // When collapsed, we merge everything or just show them in order? 
                         // To keep it simple, we just render the sessions without group headers, iterate anyway
@@ -151,7 +148,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 {groupSessions.map(session => (
                                     <button
                                         key={session.session_id}
-                                        onClick={() => onSessionSelect(session)}
+                                        onClick={() => { onSessionSelect(session); }}
                                         title={isCollapsed ? session.title : undefined}
                                         className={`group w-full text-left p-2 rounded-lg text-sm flex items-center gap-3 transition-colors relative 
                                             ${activeSessionId === session.session_id ? 'bg-primary/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}
@@ -165,7 +162,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                 <span className="truncate flex-1">{session.title || "Untitled Chat"}</span>
                                                 {/* Delete Action (Hover only) */}
                                                 <div
-                                                    onClick={(e) => handleDelete(e, session.session_id)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={(e) => { void handleDelete(e, session.session_id); }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { void handleDelete(e as unknown as React.MouseEvent, session.session_id); } }}
                                                     className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded text-red-400 transition-all"
                                                 >
                                                     <Trash2 size={12} />

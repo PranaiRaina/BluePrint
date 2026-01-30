@@ -16,13 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install uv
 
 # Copy dependency files
-COPY pyproject.toml requirements.txt requirements.lock ./
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies via uv (system-wide)
-RUN uv pip install --system -r requirements.lock
+# Install dependencies via uv (creates .venv)
+# --frozen: ensures strict adherence to uv.lock
+# --no-dev: excludes dev dependencies
+RUN uv sync --frozen --no-dev
 
-# Download Spacy model (for PII redaction if RAG pipeline uses this container)
-RUN python -m spacy download en_core_web_sm
+# Add .venv to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Spacy model is now installed via pyproject.toml dependency, so explicit download is not needed.
 
 # Copy application code
 COPY . .

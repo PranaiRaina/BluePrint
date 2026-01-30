@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { agentService } from '../../services/agent';
+import { agentService, type Message } from '../../services/agent';
 import { Send, Bot, Sparkles } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import LiveMessage from '../ui/LiveMessage'; // Import the new component
 
 interface ChatViewProps {
     session: Session;
@@ -20,11 +21,14 @@ const getUserInitials = (email?: string) => {
 
 const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, onTickers }) => {
 
-    const [messages, setMessages] = useState<any[]>([]);
+    const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState("Thinking...");
+
+    // Ref to hold the current streaming content without triggering re-renders
+    const streamContentRef = useRef("");
 
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -38,9 +42,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
 
     useEffect(() => {
         const loadHistory = async () => {
-            if (session?.user?.id) {
-                // If we have an initial query, we don't want to reset to default
-                // because processQuery will be running (or has run) to add the user message.
+            if (session.user.id) {
                 if (!initialQuery) {
                     setMessages([]);
                 }
@@ -49,7 +51,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                     setIsHistoryLoading(true);
                     try {
                         const history = await agentService.getHistory(sessionId, session);
-                        if (history && history.length > 0) {
+                        if (history.length > 0) {
                             if (!initialQuery) {
                                 setMessages(history);
                             }
@@ -62,73 +64,49 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 }
             }
         };
-        loadHistory();
-    }, [session, sessionId, initialQuery]);
+        void loadHistory();
+    }, [session.user.id, sessionId, initialQuery, session]);
 
-    const processQuery = async (text: string) => {
+    const processQuery = React.useCallback(async (text: string) => {
         if (!text.trim()) return;
 
         // Add User Message
-        const newMsgs = [...messages, { role: 'user', content: text }];
+        const newMsgs = [...messages, { role: 'user' as const, content: text }];
         setMessages(newMsgs);
         setInput('');
         setIsLoading(true);
         setLoadingStatus("Thinking...");
 
-        // Add Empty AI Message Placeholder
-        setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+        // Reset stream Ref
+        streamContentRef.current = "";
 
-        let fullResponse = "";
-        let displayedResponse = "";
-
-        // Smooth Typewriter Effect
-        // We capture the stream in fullResponse, and update state from displayedResponse incrementally
-        const typeWriter = setInterval(() => {
-            if (displayedResponse.length < fullResponse.length) {
-                // Determine chunk size based on lag to prevent falling too far behind
-                const lag = fullResponse.length - displayedResponse.length;
-                const chunkSize = lag > 50 ? 5 : (lag > 20 ? 3 : 2);
-
-                const nextChunk = fullResponse.slice(displayedResponse.length, displayedResponse.length + chunkSize);
-                displayedResponse += nextChunk;
-
-                setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg?.role === 'ai') {
-                        return [
-                            ...prev.slice(0, -1),
-                            { ...lastMsg, content: displayedResponse }
-                        ];
-                    }
-                    return prev;
-                });
-            }
-        }, 20);
+        // Add Empty AI Message Placeholder (This will render the LiveMessage component)
+        setMessages(prev => [...prev, { role: 'ai' as const, content: '' }]);
 
         try {
             await agentService.streamChat(
                 text,
                 session,
-                sessionId || 'new', // Ensure valid session
+                sessionId || 'new',
                 {
                     onStatus: (status) => {
                         setLoadingStatus(status);
                     },
                     onToken: (token) => {
-                        fullResponse += token;
+                        // Update ref directly - NO RE-RENDER triggered here
+                        streamContentRef.current += token;
                     },
                     onTickers: (tickers) => {
                         if (onTickers) onTickers(tickers);
                     },
                     onComplete: () => {
-                        clearInterval(typeWriter);
-                        // Ensure final synchronization
+                        // Final consistency update
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            if (lastMsg?.role === 'ai') {
+                            if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
-                                    { ...lastMsg, content: fullResponse }
+                                    { ...lastMsg, content: streamContentRef.current }
                                 ];
                             }
                             return prev;
@@ -138,14 +116,13 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                     },
                     onError: (err) => {
                         console.error(err);
-                        clearInterval(typeWriter);
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
                             const errorMsg = "\n\n[Error encountered]";
-                            if (lastMsg?.role === 'ai') {
+                            if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
-                                    { ...lastMsg, content: lastMsg.content + errorMsg }
+                                    { ...lastMsg, content: streamContentRef.current + errorMsg }
                                 ];
                             }
                             return prev;
@@ -156,10 +133,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
             );
         } catch (error) {
             console.error(error);
-            clearInterval(typeWriter);
             setIsLoading(false);
         }
-    };
+    }, [messages, session, sessionId, onTickers]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -178,9 +154,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
 
         if (initialQuery && !hasSentInitial.current) {
             hasSentInitial.current = true;
-            processQuery(initialQuery);
+            void processQuery(initialQuery);
         }
-    }, [initialQuery]);
+    }, [initialQuery, processQuery]);
 
     return (
         <div className="w-full h-full pt-4 pb-4 px-4 flex flex-col max-w-5xl mx-auto">
@@ -207,22 +183,32 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                     >
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai' ? 'bg-ai/20 text-ai' : 'bg-gradient-to-br from-primary to-ai text-white'}`}>
-                            {msg.role === 'ai' ? <Bot className="w-4 h-4" /> : <span className="font-serif text-xs">{getUserInitials(session?.user?.email)}</span>}
+                            {msg.role === 'ai' ? <Bot className="w-4 h-4" /> : <span className="font-serif text-xs">{getUserInitials(session.user.email)}</span>}
                         </div>
                         <div className={`p-4 rounded-2xl max-w-[85%] w-fit text-sm leading-relaxed overflow-hidden ${msg.role === 'ai'
                             ? 'bg-white/5 text-slate-200 border border-white/5'
                             : 'bg-primary/20 text-white border border-primary/20'
                             }`}>
                             {msg.role === 'ai' ? (
-                                <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-white prose-strong:text-primary prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                                    {isLoading && i === messages.length - 1 && (
-                                        <div className="mt-2 flex items-center gap-2 text-xs font-mono text-ai/70 bg-ai/5 px-2 py-1 rounded border border-ai/10">
-                                            <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping shrink-0" />
-                                            <span>{loadingStatus}</span>
+                                <>
+                                    {/* If this is the LAST message and we are loading, use LiveMessage */}
+                                    {isLoading && i === messages.length - 1 ? (
+                                        <div className="relative">
+                                            <LiveMessage
+                                                contentRef={streamContentRef}
+                                                isStreaming={isLoading}
+                                            />
+                                            <div className="mt-2 flex items-center gap-2 text-xs font-mono text-ai/70 bg-ai/5 px-2 py-1 rounded border border-ai/10">
+                                                <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping shrink-0" />
+                                                <span>{loadingStatus}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-white prose-strong:text-primary prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                         </div>
                                     )}
-                                </div>
+                                </>
                             ) : (
                                 msg.content
                             )}
@@ -236,7 +222,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 <input
                     type="text"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => { setInput(e.target.value); }}
                     placeholder="Ask complex questions about your data..."
                     className="w-full glass-input pr-12 !py-4"
                     disabled={isLoading}

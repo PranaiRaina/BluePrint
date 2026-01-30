@@ -7,6 +7,38 @@ export interface AgentResponse {
     status: string;
 }
 
+export interface ChatSession {
+    session_id: string;
+    title: string;
+    created_at: string;
+    metadata?: string;
+}
+
+export interface StockData {
+    ticker: string;
+    currentPrice: number;
+    change: number;
+    changePercent: number;
+    high: number;
+    low: number;
+    open: number;
+    previousClose: number;
+    candles: { time: string; value: number; open: number; high: number; low: number }[];
+}
+
+export interface Message {
+    role: 'user' | 'ai';
+    content: string;
+    timestamp?: string;
+}
+
+type StreamEvent =
+    | { type: 'token'; content: string }
+    | { type: 'status'; content: string }
+    | { type: 'tickers'; content: string[] }
+    | { type: 'error'; content: string }
+    | { type: 'end' };
+
 export const agentService = {
     /**
      * Send a query to the Manager Agent.
@@ -14,7 +46,7 @@ export const agentService = {
      * @param session Supabase session for authentication token.
      * @param sessionId Optional session ID for conversation history.
      */
-    calculate: async (query: string, session: Session | null, sessionId: string = 'default'): Promise<AgentResponse> => {
+    calculate: async (query: string, session: Session | null, sessionId = 'default'): Promise<AgentResponse> => {
         try {
             const token = session?.access_token;
 
@@ -23,7 +55,7 @@ export const agentService = {
             };
 
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/calculate`, {
@@ -36,11 +68,11 @@ export const agentService = {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `API Error: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({})) as { detail?: string };
+                throw new Error(errorData.detail ?? `API Error: ${response.statusText}`);
             }
 
-            return await response.json();
+            return await response.json() as AgentResponse;
         } catch (error) {
             console.error("Agent API Error:", error);
             throw error;
@@ -53,7 +85,7 @@ export const agentService = {
     streamChat: async (
         query: string,
         session: Session | null,
-        sessionId: string = 'default',
+        sessionId = 'default',
         callbacks: {
             onStatus: (status: string) => void;
             onToken: (token: string) => void;
@@ -68,7 +100,7 @@ export const agentService = {
                 'Content-Type': 'application/json',
             };
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/chat/stream`, {
@@ -78,8 +110,8 @@ export const agentService = {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `API Error: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({})) as { detail?: string };
+                throw new Error(errorData.detail ?? `API Error: ${response.statusText}`);
             }
 
             const reader = response.body?.getReader();
@@ -89,7 +121,8 @@ export const agentService = {
 
             let buffer = '';
 
-            while (true) {
+
+            for (; ;) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
@@ -98,14 +131,14 @@ export const agentService = {
 
                 // Keep the last line in the buffer if it's incomplete
                 // If the chunk ended with \n, the last line will be empty, which is fine
-                buffer = lines.pop() || '';
+                buffer = lines.pop() ?? '';
 
                 for (const line of lines) {
                     if (line.trim() === '') continue;
 
                     if (line.startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(line.slice(6));
+                            const data = JSON.parse(line.slice(6)) as StreamEvent;
 
                             if (data.type === 'token') {
                                 callbacks.onToken(data.content);
@@ -117,7 +150,7 @@ export const agentService = {
                                 }
                             } else if (data.type === 'error') {
                                 callbacks.onError(data.content);
-                            } else if (data.type === 'end') {
+                            } else {
                                 // Stream finished gracefully
                             }
                         } catch (e) {
@@ -137,7 +170,7 @@ export const agentService = {
     /**
      * Upload a document for RAG ingestion.
      */
-    upload: async (file: File, session: Session | null): Promise<any> => {
+    upload: async (file: File, session: Session | null): Promise<{ message: string; filename: string }> => {
         try {
             const token = session?.access_token;
             const formData = new FormData();
@@ -145,7 +178,7 @@ export const agentService = {
 
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/upload`, {
@@ -155,11 +188,11 @@ export const agentService = {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `Upload Error: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({})) as { detail?: string };
+                throw new Error(errorData.detail ?? `Upload Error: ${response.statusText}`);
             }
 
-            return await response.json();
+            return await response.json() as { message: string; filename: string };
         } catch (error) {
             console.error("Upload API Error:", error);
             throw error;
@@ -174,7 +207,7 @@ export const agentService = {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/documents`, {
@@ -186,8 +219,8 @@ export const agentService = {
                 return [];
             }
 
-            const data = await response.json();
-            return data.documents || [];
+            const data = await response.json() as { documents: string[] };
+            return data.documents;
         } catch (error) {
             console.error("Fetch Documents Error:", error);
             return [];
@@ -199,12 +232,12 @@ export const agentService = {
      * @param ticker Stock ticker symbol (e.g., "NVDA").
      * @param session Supabase session for authentication token.
      */
-    getStockData: async (ticker: string, session: Session | null, timeRange: string = "3m"): Promise<any> => {
+    getStockData: async (ticker: string, session: Session | null, timeRange = "3m"): Promise<StockData> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/stock/${ticker.toUpperCase()}?time_range=${timeRange}`, {
@@ -213,11 +246,11 @@ export const agentService = {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `Stock API Error: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({})) as { detail?: string };
+                throw new Error(errorData.detail ?? `Stock API Error: ${response.statusText}`);
             }
 
-            return await response.json();
+            return await response.json() as StockData;
         } catch (error) {
             console.error("Stock API Error:", error);
             throw error;
@@ -227,12 +260,12 @@ export const agentService = {
     /**
      * Get chat history for the current session.
      */
-    getHistory: async (sessionId: string, session: Session | null): Promise<any[]> => {
+    getHistory: async (sessionId: string, session: Session | null): Promise<Message[]> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/history?session_id=${sessionId}`, {
@@ -244,7 +277,7 @@ export const agentService = {
                 return [];
             }
 
-            return await response.json();
+            return await response.json() as Message[];
         } catch (error) {
             console.error("Fetch History Error:", error);
             return [];
@@ -259,7 +292,7 @@ export const agentService = {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/documents/${filename}`, {
@@ -280,12 +313,12 @@ export const agentService = {
     /**
      * Get list of chat sessions.
      */
-    getSessions: async (session: Session | null): Promise<any[]> => {
+    getSessions: async (session: Session | null): Promise<ChatSession[]> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/sessions`, {
@@ -297,7 +330,7 @@ export const agentService = {
                 return [];
             }
 
-            const data = await response.json();
+            const data = await response.json() as { sessions?: ChatSession[] };
             return data.sessions || [];
         } catch (error) {
             console.error("Fetch Sessions Error:", error);
@@ -308,14 +341,14 @@ export const agentService = {
     /**
      * Create a new session.
      */
-    createSession: async (title: string, session: Session | null): Promise<any> => {
+    createSession: async (title: string, session: Session | null): Promise<ChatSession | null> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {
                 'Content-Type': 'application/json',
             };
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/sessions`, {
@@ -328,7 +361,7 @@ export const agentService = {
                 throw new Error("Failed to create session");
             }
 
-            return await response.json();
+            return await response.json() as ChatSession;
         } catch (error) {
             console.error("Create Session Error:", error);
             return null;
@@ -345,7 +378,7 @@ export const agentService = {
                 'Content-Type': 'application/json',
             };
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/sessions/${sessionId}`, {
@@ -369,7 +402,7 @@ export const agentService = {
             const token = session?.access_token;
             const headers: HeadersInit = {};
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
 
             const response = await fetch(`${API_Base}/v1/agent/sessions/${sessionId}`, {

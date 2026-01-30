@@ -185,26 +185,26 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
                 ]);
 
                 if (!articlesRes.ok) {
-                    throw new Error(`Failed to fetch articles: ${articlesRes.status}`);
+                    throw new Error(`Failed to fetch articles: ${String(articlesRes.status)}`);
                 }
 
-                const articlesResult = await articlesRes.json();
+                const articlesResult = await articlesRes.json() as ArticlesData;
                 setData(articlesResult);
 
                 if (analystRes.ok) {
-                    const analystResult = await analystRes.json();
+                    const analystResult = await analystRes.json() as AnalystData;
                     if (!analystResult.error) {
                         setAnalystData(analystResult);
                     }
                 }
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchData();
+        void fetchData();
     }, [ticker, session]);
 
     const getSentimentColor = (sentiment: string) => {
@@ -230,7 +230,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
     };
 
     const getAnalystColor = (rec: string) => {
-        const r = rec?.toUpperCase() || '';
+        const r = rec.toUpperCase() || '';
         switch (r) {
             case 'STRONG BUY':
             case 'BUY':
@@ -248,7 +248,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
     };
 
     const getAnalystBadgeStyle = (rec: string) => {
-        const r = rec?.toUpperCase() || '';
+        const r = rec.toUpperCase() || '';
         switch (r) {
             case 'STRONG BUY':
             case 'BUY':
@@ -310,7 +310,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
                             </div>
                             <div className="flex items-center gap-4 text-sm mb-2">
                                 <span>
-                                    Expert: <span className={`font-bold ${getAnalystColor(analystData?.recommendation || '')}`}>
+                                    Expert: <span className={`font-bold ${getAnalystColor(analystData?.recommendation ?? '')}`}>
                                         {analystData?.recommendation}
                                     </span>
                                 </span>

@@ -60,7 +60,7 @@ const StockView: React.FC = () => {
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
                         <XAxis dataKey="time" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis domain={['auto', 'auto']} stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                        <YAxis domain={['auto', 'auto']} stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val: unknown) => `$${String(val)}`} />
                         <Tooltip
                             contentStyle={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                             itemStyle={{ color: '#fff' }}

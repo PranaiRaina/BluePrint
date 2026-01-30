@@ -26,7 +26,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
 
     // Get user initials from email
     const getUserInitials = () => {
-        if (!session?.user?.email) return 'U';
+        if (!session?.user.email) return 'U';
         const email = session.user.email;
         return email.substring(0, 2).toUpperCase();
     };
@@ -52,7 +52,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
                     return (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
+                            onClick={() => { setActiveTab(tab.id as 'overview' | 'market' | 'vault' | 'chat' | 'stocks'); }}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all duration-300 relative ${isActive
                                 ? 'text-white'
                                 : 'text-text-secondary hover:text-white hover:bg-white/5'
@@ -75,12 +75,12 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
             {/* User Menu with Sign Out */}
             <div className="relative">
                 <button
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    onClick={() => { setUserMenuOpen(!userMenuOpen); }}
                     className="flex items-center gap-3 hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
                 >
                     <div className="hidden md:flex flex-col items-end">
                         <span className="text-xs text-text-secondary truncate max-w-[150px]">
-                            {session?.user?.email || 'User'}
+                            {session?.user.email ?? 'User'}
                         </span>
                         <div className="flex items-center gap-1.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -105,7 +105,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
                             <div className="p-3 border-b border-white/10">
                                 <div className="flex items-center gap-2">
                                     <User className="w-4 h-4 text-text-secondary" />
-                                    <span className="text-sm text-white truncate">{session?.user?.email || 'User'}</span>
+                                    <span className="text-sm text-white truncate">{session?.user.email ?? 'User'}</span>
                                 </div>
                             </div>
                             <button

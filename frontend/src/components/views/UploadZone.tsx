@@ -16,7 +16,8 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
 
     // Fetch documents on mount
     React.useEffect(() => {
-        fetchDocuments();
+        void fetchDocuments();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     const fetchDocuments = async () => {
@@ -39,13 +40,13 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
         setIsDragging(false);
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            handleUpload(files[0]);
+            void handleUpload(files[0]);
         }
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            handleUpload(e.target.files[0]);
+            void handleUpload(e.target.files[0]);
         }
     };
 
@@ -62,8 +63,8 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
             await agentService.upload(file, session);
             // Refresh list from server to ensure it's actually there
             await fetchDocuments();
-        } catch (err: any) {
-            setError(err.message || "Upload failed");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Upload failed");
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) {
@@ -84,7 +85,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
             } else {
                 setError("Failed to delete document.");
             }
-        } catch (err) {
+        } catch {
             setError("Error deleting document.");
         }
     };
@@ -95,6 +96,9 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
             <p className="text-text-secondary mb-8">Securely upload financial documents for generic analysis.</p>
 
             <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
