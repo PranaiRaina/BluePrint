@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_tavily import TavilySearch
 from langchain_core.documents import Document
 from .ingestion import get_vectorstore
 from .config import settings
@@ -39,7 +39,7 @@ llm = get_llm()
 # Tool: Tavily Search
 web_search_tool = None
 if settings.TAVILY_API_KEY:
-    web_search_tool = TavilySearchResults(tavily_api_key=settings.TAVILY_API_KEY, k=3)
+    web_search_tool = TavilySearch(max_results=3, tavily_api_key=settings.TAVILY_API_KEY)
 
 # --- Nodes ---
 
