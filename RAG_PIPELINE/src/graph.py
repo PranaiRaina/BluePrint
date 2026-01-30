@@ -221,10 +221,10 @@ Instructions:
 """
 
     prompt = ChatPromptTemplate.from_template(template)
-    chain = prompt | llm | StrOutputParser()
+    chain = prompt | llm.with_config({"tags": ["final_generation"]}) | StrOutputParser()
     generation = chain.invoke({"context": context, "question": question})
 
-    return {"generation": generation}
+    return {"generation": generation, "documents": documents}
 
 
 # --- Conditional Logic ---

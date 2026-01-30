@@ -1,5 +1,6 @@
 from RAG_PIPELINE.src.graph import app_graph
 import asyncio
+import os
 
 
 async def perform_rag_search(query: str, user_id: str = "fallback-user-id") -> str:
@@ -43,14 +44,37 @@ async def perform_rag_search_stream(query: str, user_id: str = "fallback-user-id
             kind = event["event"]
 
             if kind == "on_chat_model_stream":
-                # Check if this stream is coming from the 'generate' node
-                # The 'generate' node uses 'ChatGoogleGenerativeAI'
-                # In V2, we get standard Run events
-                chunk = event["data"]["chunk"]
-                content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if content:
-                    yield {"type": "token", "content": content}
-                    await asyncio.sleep(0)  # Force buffer flush
+                # Robust filtering: Check for tag OR node name
+                is_final = "final_generation" in event.get("tags", [])
+                is_gen_node = event.get("metadata", {}).get("langgraph_node") == "generate"
+
+                if is_final or is_gen_node:
+                    chunk = event["data"]["chunk"]
+                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if content:
+                        yield {"type": "token", "content": content}
+                        await asyncio.sleep(0)
+
+            elif kind == "on_chain_end":
+                # Capture citations when the 'generate' node finishes
+                if event.get("name") == "generate":
+                    output = event.get("data", {}).get("output", {})
+                    docs = output.get("documents", [])
+                    if docs:
+                        # Format unique sources
+                        sources = set()
+                        for d in docs:
+                            source = d.metadata.get("source", "Unknown")
+                            if source != "Tavily Search": 
+                                sources.add(os.path.basename(str(source)))
+                            else:
+                                sources.add("Web Search")
+
+                        if sources:
+                            source_msg = (
+                                f"\n\n*Sources: {', '.join(sorted(list(sources)))}*"
+                            )
+                            yield {"type": "token", "content": source_msg}
 
             elif kind == "on_tool_start":
                 # Yield status for internal RAG tool usage
