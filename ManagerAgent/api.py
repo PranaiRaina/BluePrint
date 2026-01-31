@@ -107,21 +107,24 @@ def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
+                # Use seq_id for guaranteed insertion order sorting
                 cursor.execute(
                     """
-                    SELECT role, content FROM chat_history 
-                    WHERE user_id = %s AND session_id = %s 
-                    ORDER BY timestamp DESC, id DESC 
-                    LIMIT %s
+                    SELECT role, content FROM (
+                        SELECT role, content, seq_id 
+                        FROM chat_history 
+                        WHERE user_id = %s AND session_id = %s 
+                        ORDER BY seq_id DESC 
+                        LIMIT %s
+                    ) AS sub
+                    ORDER BY seq_id ASC
                 """,
                     (user_id, session_id, limit),
                 )
                 rows = cursor.fetchall()
 
-        # Reverse to chronological order
-        history = rows[::-1]
         formatted_history = "\n".join(
-            [f"{row['role']}: {row['content']}" for row in history]
+            [f"{row['role']}: {row['content']}" for row in rows]
         )
         return formatted_history
     except Exception as e:
@@ -134,26 +137,28 @@ def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> Lis
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
+                # Use seq_id for guaranteed insertion order sorting
                 cursor.execute(
                     """
-                    SELECT role, content FROM chat_history 
-                    WHERE user_id = %s AND session_id = %s 
-                    ORDER BY timestamp DESC, id DESC 
-                    LIMIT %s
+                    SELECT role, content FROM (
+                        SELECT role, content, seq_id 
+                        FROM chat_history 
+                        WHERE user_id = %s AND session_id = %s 
+                        ORDER BY seq_id DESC 
+                        LIMIT %s
+                    ) AS sub
+                    ORDER BY seq_id ASC
                 """,
                     (user_id, session_id, limit),
                 )
                 rows = cursor.fetchall()
 
-        # Reverse to chronological order (Oldest -> Newest)
-        history = rows[::-1]
-
         # Map backend roles to frontend roles
         formatted_history = []
-        for row in history:
-            role = row["role"]
+        for row in rows:
+            role = str(row["role"]).lower()
             content = row["content"]
-            frontend_role = "user" if role == "User" else "ai"
+            frontend_role = "user" if role == "user" else "ai"
             formatted_history.append({"role": frontend_role, "content": content})
 
         return formatted_history
@@ -162,43 +167,73 @@ def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> Lis
         return []
 
 
-def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
-    """Save a single chat entry scoped by user."""
+def save_chat_pair(user_id: str, session_id: str, user_query: str, agent_response: str):
+    """Save both user and agent messages in a single atomic transaction for correct ordering."""
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
+                # 1. Ensure session exists
+                cursor.execute(
+                    """
+                    INSERT INTO chat_sessions (session_id, user_id, title)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (session_id) DO UPDATE 
+                    SET updated_at = CURRENT_TIMESTAMP
+                """,
+                    (session_id, user_id, user_query[:50] if user_query else "New Conversation"),
+                )
+
+                # 2. Insert User message
+                cursor.execute(
+                    "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (%s, %s, %s, %s)",
+                    (user_id, session_id, "User", user_query),
+                )
+
+                # 3. Insert Agent message
+                cursor.execute(
+                    "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (%s, %s, %s, %s)",
+                    (user_id, session_id, "Agent", agent_response),
+                )
+        print(f"DEBUG: Successfully saved message pair for session {session_id}")
+    except Exception as e:
+        print(f"ERROR saving chat pair for session {session_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
+    """Fallback for single entries, though save_chat_pair is preferred for turn consistency."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO chat_sessions (session_id, user_id, title)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (session_id) DO UPDATE 
+                    SET updated_at = CURRENT_TIMESTAMP
+                """,
+                    (session_id, user_id, "New Conversation"),
+                )
                 cursor.execute(
                     "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (%s, %s, %s, %s)",
                     (user_id, session_id, role, content),
                 )
-
-        # Helper to ensure session exists in `chat_sessions`
-        _ensure_session_exists(user_id, session_id)
     except Exception as e:
-        print(f"Error saving chat entry: {e}")
+        print(f"ERROR saving chat entry: {e}")
 
 
-def _ensure_session_exists(user_id: str, session_id: str):
+# Helper to update session timestamp (used elsewhere if needed)
+def update_session_timestamp(session_id: str):
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT session_id FROM chat_sessions WHERE session_id = %s",
+                    "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = %s",
                     (session_id,),
                 )
-                if not cursor.fetchone():
-                    cursor.execute(
-                        "INSERT INTO chat_sessions (session_id, user_id, title) VALUES (%s, %s, %s)",
-                        (session_id, user_id, "New Conversation"),
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = %s",
-                        (session_id,),
-                    )
     except Exception as e:
-        print(f"Error ensuring session exists: {e}")
-        pass
+        print(f"Error updating session timestamp: {e}")
 
 
 # --- Data Models ---
@@ -276,7 +311,9 @@ async def calculate(
             final_output = await ask_stock_analyst(body.query)
 
         elif decision.primary_intent == IntentType.RAG:
-            final_output = await perform_rag_search(body.query, user_id=user_id)
+            final_output = await perform_rag_search(
+                body.query, user_id=user_id, session_id=body.session_id
+            )
 
         elif decision.primary_intent == IntentType.CALCULATOR:
             # Construct Contextual Query for Financial Agent
@@ -304,9 +341,8 @@ async def calculate(
             )
             final_output = result.final_output
 
-        # 6. Save Interaction to History
-        save_chat_entry(user_id, body.session_id, "User", body.query)
-        save_chat_entry(user_id, body.session_id, "Agent", final_output)
+        # 6. Save Interaction to History (Atomic Pair)
+        save_chat_pair(user_id, body.session_id, body.query, final_output)
 
         return AgentResponse(
             final_output=final_output,
@@ -383,7 +419,9 @@ async def chat_stream(request: Request, body: AgentRequest):
                     from ManagerAgent.tools import perform_rag_search_stream
 
                     yield {"type": "status", "content": "Searching documents..."}
-                    async for chunk in perform_rag_search_stream(body.query, user_id):
+                    async for chunk in perform_rag_search_stream(
+                        body.query, user_id, body.session_id
+                    ):
                         yield chunk
 
                 elif decision.primary_intent == IntentType.CALCULATOR:
@@ -424,10 +462,9 @@ async def chat_stream(request: Request, body: AgentRequest):
                     content = chunk["content"]
                     full_response_buffer.append(content)
 
-            # 4. Save History (After stream completes)
+            # 4. Save History (After stream completes - Atomic Pair)
             final_text = "".join(full_response_buffer)
-            save_chat_entry(user_id, body.session_id, "User", body.query)
-            save_chat_entry(user_id, body.session_id, "Agent", final_text)
+            save_chat_pair(user_id, body.session_id, body.query, final_text)
 
             # End of stream
             yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"
@@ -678,6 +715,7 @@ async def list_sessions(user: dict = Depends(get_current_user)):
     """List all chat sessions for the user (Newest first)."""
     user_id = user["sub"]
     try:
+        print(f"Listing sessions for user_id: {user_id}")
         with get_db() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -691,7 +729,25 @@ async def list_sessions(user: dict = Depends(get_current_user)):
                 )
                 rows = cursor.fetchall()
 
-        return {"sessions": rows}
+        # Convert metadata (JSONB/dict) and UUIDs/dates to strings if needed for frontend
+        # dict_row already gives us dicts, but we need to ensure they are fully serializable
+        formatted_sessions = []
+        for row in rows:
+            # Metadata might be a dict (from JSONB) or None
+            metadata = row["metadata"]
+            if isinstance(metadata, dict):
+                metadata = json.dumps(metadata)
+            
+            formatted_sessions.append({
+                "session_id": str(row["session_id"]),
+                "title": row["title"],
+                "metadata": metadata,
+                "created_at": str(row["created_at"]),
+                "updated_at": str(row["updated_at"])
+            })
+
+        print(f"Found {len(formatted_sessions)} sessions for user {user_id}")
+        return {"sessions": formatted_sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

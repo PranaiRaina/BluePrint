@@ -40,27 +40,44 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         scrollToBottom();
     }, [messages, isLoading, isHistoryLoading]);
 
+    const prevSessionId = useRef<string>("");
+
     useEffect(() => {
         const loadHistory = async () => {
-            if (session.user.id) {
-                if (!initialQuery) {
+            if (!session.user.id) return;
+
+            // 1. If we switched sessions, handle clearing carefully
+            if (sessionId !== prevSessionId.current) {
+                // If moving FROM 'new' TO a real UUID, DON'T clear.
+                // The active stream or initialQuery is already managing this turn.
+                const isInitialTransition = prevSessionId.current === 'new' && sessionId !== 'new';
+
+                if (!isInitialTransition) {
                     setMessages([]);
                 }
+                prevSessionId.current = sessionId;
 
-                if (sessionId && sessionId !== 'new') {
-                    setIsHistoryLoading(true);
-                    try {
-                        const history = await agentService.getHistory(sessionId, session);
-                        if (history.length > 0) {
-                            if (!initialQuery) {
-                                setMessages(history);
-                            }
+                if (sessionId === 'new') return;
+            }
+
+            // 2. Load history for existing sessions
+            if (sessionId && sessionId !== 'new') {
+                setIsHistoryLoading(true);
+                try {
+                    const history = await agentService.getHistory(sessionId, session);
+
+                    // Critical: ONLY apply this history if we are still on the same sessionId
+                    if (prevSessionId.current === sessionId) {
+                        // If we have an initial query running, the stream will handle the UI.
+                        // Don't overwrite the active stream with old history until it's done.
+                        if (!initialQuery) {
+                            setMessages(history);
                         }
-                    } catch (e) {
-                        console.error("Failed to load history", e);
-                    } finally {
-                        setIsHistoryLoading(false);
                     }
+                } catch (e) {
+                    console.error("Failed to load history", e);
+                } finally {
+                    setIsHistoryLoading(false);
                 }
             }
         };
@@ -70,18 +87,19 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
     const processQuery = React.useCallback(async (text: string) => {
         if (!text.trim()) return;
 
-        // Add User Message
-        const newMsgs = [...messages, { role: 'user' as const, content: text }];
-        setMessages(newMsgs);
-        setInput('');
-        setIsLoading(true);
-        setLoadingStatus("Thinking...");
-
         // Reset stream Ref
         streamContentRef.current = "";
 
-        // Add Empty AI Message Placeholder (This will render the LiveMessage component)
-        setMessages(prev => [...prev, { role: 'ai' as const, content: '' }]);
+        // Add User Message and AI Placeholder using functional update
+        setMessages(prev => [
+            ...prev,
+            { role: 'user' as const, content: text },
+            { role: 'ai' as const, content: '' }
+        ]);
+
+        setInput('');
+        setIsLoading(true);
+        setLoadingStatus("Thinking...");
 
         try {
             await agentService.streamChat(
@@ -103,7 +121,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         // Final consistency update
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            if (lastMsg.role === 'ai') {
+                            if (lastMsg && lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current }
@@ -119,7 +137,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
                             const errorMsg = "\n\n[Error encountered]";
-                            if (lastMsg.role === 'ai') {
+                            if (lastMsg && lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current + errorMsg }
@@ -135,7 +153,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
             console.error(error);
             setIsLoading(false);
         }
-    }, [messages, session, sessionId, onTickers]);
+    }, [session, sessionId, onTickers]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
