@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
 
     // Grouping logic (Today, Yesterday, etc)
-    const groupedSessions = (sessions || []).reduce<Record<string, ChatSession[]>>((groups, s) => {
+    const groupedSessions = sessions.reduce<Record<string, ChatSession[]>>((groups, s) => {
         // Handle UTC strings from backend (YYYY-MM-DD HH:MM:SS) by forcing UTC interpretation
         const parseDate = (str: string) => {
             if (!str) return new Date();

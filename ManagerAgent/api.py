@@ -17,7 +17,6 @@ from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from supabase import create_client, Client
 from fastapi.responses import StreamingResponse
 import json
-import psycopg
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from fastapi import UploadFile, File
@@ -169,6 +168,10 @@ def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> Lis
 
 def save_chat_pair(user_id: str, session_id: str, user_query: str, agent_response: str):
     """Save both user and agent messages in a single atomic transaction for correct ordering."""
+    if user_id == "00000000-0000-0000-0000-000000000000":
+         print("DEBUG: Skipping history save for mock dev user.")
+         return
+
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
@@ -470,7 +473,9 @@ async def chat_stream(request: Request, body: AgentRequest):
             yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'content': f'SERVER ERROR: {type(e).__name__}: {str(e)}'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -840,19 +845,6 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Auto-update session timestamp on activity
-def update_session_timestamp(session_id: str):
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = %s",
-                    (session_id,),
-                )
-    except Exception as e:
-        print(f"Error updating session timestamp: {e}")
-        pass
 
 
 if __name__ == "__main__":

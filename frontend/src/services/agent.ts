@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 
-const API_Base = 'http://localhost:8001';
+const API_Base = 'http://localhost:8000';
 
 export interface AgentResponse {
     final_output: string;
@@ -332,7 +332,7 @@ export const agentService = {
             }
 
             const data = await response.json() as { sessions?: ChatSession[] };
-            return data.sessions || [];
+            return data.sessions ?? [];
         } catch (error) {
             console.error("Fetch Sessions Error:", error);
             return [];

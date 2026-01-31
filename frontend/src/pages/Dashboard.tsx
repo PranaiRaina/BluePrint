@@ -54,8 +54,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setCurrentSessionId(session.session_id);
         setInitialChatQuery('');
 
-        // Only switch to chat tab if we are currently in Overview (Home)
-        if (activeTab === 'overview') {
+        // Always switch to chat tab when a session is selected
+        if (activeTab !== 'chat') {
             setActiveTab('chat');
         }
 
@@ -82,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
         // Update baseline so we don't auto-save immediately
         const safeTickers = session.metadata
-            ? (JSON.parse(session.metadata) as { extractedTickers?: string[] }).extractedTickers || []
+            ? (JSON.parse(session.metadata) as { extractedTickers?: string[] } | null)?.extractedTickers ?? []
             : extractTickers(session.title);
 
         lastSavedMetadata.current = JSON.stringify({ extractedTickers: safeTickers });
@@ -103,11 +103,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query) return;
-        setIsLifted(true);
-        setLoadingStage(1);
-
         try {
-            // Instant Transition
+            // Start process
             setLoadingStage(3);
 
             // Initial empty state
@@ -171,7 +168,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             // Only save if different from what we last loaded/saved
             if (newMetadataStr !== lastSavedMetadata.current) {
                 const timeoutId = setTimeout(() => {
-                    agentService.updateSession(currentSessionId, { metadata: newMetadataStr }, session).then(() => {
+                    void agentService.updateSession(currentSessionId, { metadata: newMetadataStr }, session).then(() => {
                         setRefreshSidebar(prev => prev + 1);
                         lastSavedMetadata.current = newMetadataStr;
                     });
@@ -184,18 +181,11 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => {
         if (tab === 'overview') {
-            // If we have an active session, go to Chat view instead of resetting
+            // If we have an active session, Home tab should just show it
             if (currentSessionId !== 'new') {
                 setActiveTab('chat');
                 return;
             }
-
-            // Only reset if we are truly in 'new' session state (or explicit reset)
-            setInitialChatQuery('');
-            setIsLifted(false);
-            setQuery('');
-            setLoadingStage(0);
-            setMockInsight(null);
         }
         setActiveTab(tab);
     };
@@ -227,33 +217,25 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     animate={{ paddingLeft: isSidebarCollapsed ? 64 : 260 }}
                     transition={{ duration: 0.15, ease: "linear" }}
                 >
-                    <AnimatePresence mode="wait">
+                    <AnimatePresence>
                         {/* --- Overview View --- */}
                         {activeTab === 'overview' && (
                             <motion.div
                                 key="overview"
-                                exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
-                                className="flex flex-col items-center w-full w-full max-w-7xl px-4"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}
+                                className="flex flex-col items-center w-full max-w-7xl px-4"
                             >
                                 {/* Hero / Header Section */}
                                 <motion.div
                                     layout
-                                    className={`w-full max-w-4xl px-4 z-10 flex flex-col items-center transition-all duration-700 ${isLifted ? 'mt-8' : 'mt-[25vh]'}`}
+                                    className="w-full max-w-4xl px-4 z-10 flex flex-col items-center transition-all duration-700 mt-[30vh]"
                                 >
-                                    {!isLifted ? (
-                                        <Typewriter
-                                            text="Let your wealth grow organically."
-                                            className="font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-200 mb-8 text-center tracking-tight text-5xl md:text-7xl min-h-[1.2em]"
-                                        />
-                                    ) : (
-                                        <motion.h1
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            className="font-serif font-bold text-white mb-6 text-center tracking-tight text-3xl"
-                                        >
-                                            Financial Intelligence Agent
-                                        </motion.h1>
-                                    )}
+                                    <Typewriter
+                                        text="Let your wealth grow organically."
+                                        className="font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-200 mb-8 text-center tracking-tight text-5xl md:text-7xl min-h-[1.2em]"
+                                    />
 
                                     <motion.form
                                         layoutId="active-search-bar"
@@ -292,11 +274,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                             </button>
                                         </div>
                                     </motion.form>
-
-
                                 </motion.div>
 
-                                {/* Dynamic Zones */}
+                                {/* Dynamic Zones (Partial Response Demo) */}
                                 <AnimatePresence>
                                     {loadingStage > 0 && (
                                         <motion.div
@@ -331,20 +311,17 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                                     )}
                                                 </div>
                                             </div>
-
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
                             </motion.div>
                         )}
-
-                        {/* --- Chat View --- */}
-                        {activeTab === 'chat' && (
-                            <div key="chat" className="w-full h-full">
-                                <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
-                            </div>
-                        )}
                     </AnimatePresence>
+
+                    {/* --- Chat View (Persistent) --- */}
+                    <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+                        <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
+                    </div>
 
                     {/* --- Other Views (Persistent Mounting) --- */}
                     <div className="w-full relative h-full hidden">

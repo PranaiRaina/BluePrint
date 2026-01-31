@@ -5,10 +5,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_tavily import TavilySearch
 from langchain_core.documents import Document
-from .ingestion import get_vectorstore
 from .config import settings
-from langgraph.checkpoint.postgres import PostgresSaver
-from psycopg_pool import ConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 
 
 # --- State Definition ---
@@ -35,9 +34,6 @@ def get_llm():
 
 llm = get_llm()
 
-
-# ... (get_llm is above) ...
-
 # Tool: Tavily Search
 web_search_tool = None
 if settings.TAVILY_API_KEY:
@@ -59,7 +55,6 @@ def retrieve(state: GraphState):
         for word in ["summarize", "analyze", "overview", "everything", "my document"]
     )
 
-    # 2. Similarity Search
     # If broad, use a VERY LOW threshold to ensure we get context
     THRESHOLD = 0.15 if is_broad else 0.35
 
@@ -67,7 +62,6 @@ def retrieve(state: GraphState):
     documents = []
 
     # New implementation: Use direct RPC wrapper 'perform_similarity_search'
-    # This replaces the entire vectorstore.get / similarity_search block
     
     from .ingestion import perform_similarity_search
     
@@ -84,8 +78,6 @@ def retrieve(state: GraphState):
         # Avoid duplicates based on content
         if not any(d.page_content == doc.page_content for d in documents):
             documents.append(doc)
-
-    return {"documents": documents, "question": question, "user_id": user_id}
 
     return {"documents": documents, "question": question, "user_id": user_id}
 
@@ -154,8 +146,18 @@ def web_search(state: GraphState):
     if web_search_tool:
         try:
             docs = web_search_tool.invoke({"query": question})
-            # Tavily returns a list of dictionaries, we convert to Documents
-            web_results = "\n".join([d["content"] for d in docs])
+            web_results = ""
+            if isinstance(docs, list):
+                for d in docs:
+                    if isinstance(d, dict):
+                         web_results += d.get("content", "") + "\n"
+                    elif hasattr(d, "page_content"):
+                         web_results += d.page_content + "\n"
+                    else:
+                         web_results += str(d) + "\n"
+            else:
+                web_results = str(docs)
+                
             web_doc = Document(
                 page_content=web_results, metadata={"source": "Tavily Search"}
             )
@@ -262,17 +264,21 @@ if settings.SUPABASE_DB_URL:
         # Create a connection pool for LangGraph checkpointers
         connection_kwargs = {
             "autocommit": True,
-            "prepare_threshold": 0,
+            "prepare_threshold": None,
         }
-        pool = ConnectionPool(
+        # Use AsyncConnectionPool for ainvoke compatibility
+        # We Initialize with open=False so it doesn't fail at module import time (no loop)
+        pool = AsyncConnectionPool(
             conninfo=settings.SUPABASE_DB_URL,
             max_size=10,
             kwargs=connection_kwargs,
+            open=False # Defer connection opening
         )
-        checkpointer = PostgresSaver(pool)
-        print("LangGraph Postgres Checkpointer initialized.")
+        checkpointer = AsyncPostgresSaver(pool)
+        
+        print("LangGraph AsyncPostgresSaver initialized (Pool deferred).")
     except Exception as e:
-        print(f"Failed to initialize Postgres Checkpointer: {e}")
+        print(f"Failed to initialize AsyncPostgresSaver: {e}")
 
 # Compile
 app_graph = workflow.compile(checkpointer=checkpointer)

@@ -48,7 +48,7 @@ def verify_token(token: str) -> dict:
     # DEV MODE BYPASS
     if token == "mock-token":
         return {
-            "sub": "dev-user-id",
+            "sub": "00000000-0000-0000-0000-000000000000",
             "aud": "authenticated",
             "email": "dev@example.com",
         }

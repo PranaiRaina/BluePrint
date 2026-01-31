@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { agentService, type Message } from '../../services/agent';
-import { Send, Bot, Sparkles } from 'lucide-react';
+import { Send, Bot } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -57,7 +57,10 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 }
                 prevSessionId.current = sessionId;
 
-                if (sessionId === 'new') return;
+                if (sessionId === 'new') {
+                    setIsHistoryLoading(false);
+                    return;
+                }
             }
 
             // 2. Load history for existing sessions
@@ -121,7 +124,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         // Final consistency update
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            if (lastMsg && lastMsg.role === 'ai') {
+                            if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current }
@@ -136,8 +139,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         console.error(err);
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            const errorMsg = "\n\n[Error encountered]";
-                            if (lastMsg && lastMsg.role === 'ai') {
+                            const errorMessage = err;
+                            const errorMsg = `\n\n ** Error:** ${errorMessage} `;
+                            if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current + errorMsg }
@@ -184,6 +188,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 </div>
                 <div>
                     <Typewriter
+                        key={`title-${sessionId}`}
                         text="BluePrint Agent"
                         speed={50}
                         className="text-xl font-bold text-white font-serif tracking-wide"
@@ -241,10 +246,8 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
             </div>
 
             <motion.form
-                layoutId="active-search-bar"
                 onSubmit={handleSend}
                 className="mt-4 relative shrink-0"
-                initial={{ borderRadius: "12px" }}
             >
                 <input
                     type="text"
@@ -253,7 +256,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                     placeholder="Ask complex questions about your data..."
                     className="w-full glass-input pr-12 !py-4"
                     disabled={isLoading}
-                    autoFocus
                 />
                 <button
                     type="submit"
