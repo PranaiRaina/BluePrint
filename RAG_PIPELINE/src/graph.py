@@ -7,6 +7,8 @@ from langchain_tavily import TavilySearch
 from langchain_core.documents import Document
 from .ingestion import get_vectorstore
 from .config import settings
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
 
 
 # --- State Definition ---
@@ -266,5 +268,24 @@ workflow.add_conditional_edges(
 workflow.add_edge("web_search", "generate")
 workflow.add_edge("generate", END)
 
+# --- Checkpointer Initialization ---
+checkpointer = None
+if settings.SUPABASE_DB_URL:
+    try:
+        # Create a connection pool for LangGraph checkpointers
+        connection_kwargs = {
+            "autocommit": True,
+            "prepare_threshold": 0,
+        }
+        pool = ConnectionPool(
+            conninfo=settings.SUPABASE_DB_URL,
+            max_size=10,
+            kwargs=connection_kwargs,
+        )
+        checkpointer = PostgresSaver(pool)
+        print("LangGraph Postgres Checkpointer initialized.")
+    except Exception as e:
+        print(f"Failed to initialize Postgres Checkpointer: {e}")
+
 # Compile
-app_graph = workflow.compile()
+app_graph = workflow.compile(checkpointer=checkpointer)

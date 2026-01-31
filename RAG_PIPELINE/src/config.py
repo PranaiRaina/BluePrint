@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
 
+    # Supabase Postgres
+    SUPABASE_DB_URL: str = ""
+
     # Configuration
     LLM_PROVIDER: str = "gemini"  # Options: "gemini"
 

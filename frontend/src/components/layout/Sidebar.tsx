@@ -35,11 +35,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     // For now, we load on mount. 
 
     const loadSessions = React.useCallback(async () => {
-        setIsLoading(true);
+        if (sessions.length === 0) {
+            setIsLoading(true);
+        }
         const list = await agentService.getSessions(session);
         setSessions(list);
         setIsLoading(false);
-    }, [session]);
+    }, [session, sessions.length]);
 
     // Initial Load
     React.useEffect(() => {
