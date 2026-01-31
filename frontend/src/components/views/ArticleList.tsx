@@ -170,6 +170,10 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
         if (!ticker || !session) return;
 
         const fetchData = async () => {
+            // Reset state to avoid showing stale data from previous ticker
+            setAnalystData(null);
+            setData(null);
+
             setLoading(true);
             setError(null);
 

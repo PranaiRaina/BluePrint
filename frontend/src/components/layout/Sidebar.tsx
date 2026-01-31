@@ -68,7 +68,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     // Grouping logic (Today, Yesterday, etc)
     const groupedSessions = (sessions || []).reduce<Record<string, ChatSession[]>>((groups, s) => {
-        const date = new Date(s.created_at);
+        // Handle UTC strings from backend (YYYY-MM-DD HH:MM:SS) by forcing UTC interpretation
+        const parseDate = (str: string) => {
+            if (!str) return new Date();
+            let safe = str.replace(' ', 'T');
+            if (!safe.endsWith('Z') && !safe.includes('+')) safe += 'Z';
+            return new Date(safe);
+        };
+
+        const date = parseDate(s.updated_at || s.created_at);
         const today = new Date();
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -77,12 +85,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         // Check if date is today (or future, to handle timezone discrepencies)
         const isToday = date.toDateString() === today.toDateString();
-        const isYesterday = date.toDateString() === yesterday.toDateString();
-        const isLast7Days = date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+        // user requested "Today", "Previous 7 Days", "Older". 
+        // "Yesterday" falls into "Previous 7 Days".
+        // Ensure "Previous 7 Days" covers everything from Yesterday back to 7 days ago.
+        const isPrevious7Days = date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000) && !isToday;
 
         if (isToday) key = 'Today';
-        else if (isYesterday) key = 'Yesterday';
-        else if (isLast7Days) key = 'Previous 7 Days';
+        else if (isPrevious7Days) key = 'Previous 7 Days';
+        // else Older
 
         if (Object.prototype.hasOwnProperty.call(groups, key)) {
             groups[key].push(s);
@@ -92,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         return groups;
     }, {});
 
-    const groupOrder = ['Today', 'Yesterday', 'Previous 7 Days', 'Older'];
+    const groupOrder = ['Today', 'Previous 7 Days', 'Older'];
 
     return (
         <motion.div
