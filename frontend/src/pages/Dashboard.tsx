@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const [currentSessionId, setCurrentSessionId] = useState<string>('new');
     const [initialChatQuery, setInitialChatQuery] = useState('');
     const [refreshSidebar, setRefreshSidebar] = useState(0);
+    const lastSavedMetadata = React.useRef<string>("");
 
     const handleNewChat = () => {
         setCurrentSessionId('new');
@@ -32,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setQuery('');
         setLoadingStage(0);
         setMockInsight(null);
+        setExtractedTickers([]); // <--- Clear previous tickers
         setActiveTab('overview');
     };
 
@@ -77,6 +79,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             const tickersFromTitle = extractTickers(session.title);
             setExtractedTickers(tickersFromTitle);
         }
+
+        // Update baseline so we don't auto-save immediately
+        const safeTickers = session.metadata
+            ? (JSON.parse(session.metadata) as { extractedTickers?: string[] }).extractedTickers || []
+            : extractTickers(session.title);
+
+        lastSavedMetadata.current = JSON.stringify({ extractedTickers: safeTickers });
     };
 
     const [query, setQuery] = useState('');
@@ -155,14 +164,23 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     // Auto-save session state (debounced)
     useEffect(() => {
-        if (currentSessionId && currentSessionId !== 'new' && extractedTickers.length > 0) {
-            const timeoutId = setTimeout(() => {
-                const metadata = JSON.stringify({ extractedTickers });
-                void agentService.updateSession(currentSessionId, { metadata }, session);
-            }, 1000); // Debounce 1s
-            return () => { clearTimeout(timeoutId); };
+        if (currentSessionId && currentSessionId !== 'new') {
+            const newMetadataObj = { extractedTickers };
+            const newMetadataStr = JSON.stringify(newMetadataObj);
+
+            // Only save if different from what we last loaded/saved
+            if (newMetadataStr !== lastSavedMetadata.current) {
+                const timeoutId = setTimeout(() => {
+                    agentService.updateSession(currentSessionId, { metadata: newMetadataStr }, session).then(() => {
+                        setRefreshSidebar(prev => prev + 1);
+                        lastSavedMetadata.current = newMetadataStr;
+                    });
+                }, 1000); // Debounce 1s
+                return () => { clearTimeout(timeoutId); };
+            }
         }
     }, [extractedTickers, currentSessionId, session]);
+
 
     const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => {
         if (tab === 'overview') {

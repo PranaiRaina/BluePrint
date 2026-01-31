@@ -215,5 +215,11 @@ def wolfram_risk_analysis(
             "strongSell", 0
         )
         result["holdCount"] = analyst_ratings.get("hold", 0)
+    else:
+        # Explicitly set to N/A so the LLM knows it's missing (prevents hallucinations)
+        result["analystConsensusScore"] = "N/A"
+        result["analystRecommendation"] = "N/A"
+        result["totalAnalysts"] = 0
+
 
     return result

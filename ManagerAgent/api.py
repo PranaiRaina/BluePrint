@@ -693,7 +693,7 @@ async def list_sessions(user: dict = Depends(get_current_user)):
 
         cursor.execute(
             """
-            SELECT session_id, title, metadata, created_at FROM chat_sessions 
+            SELECT session_id, title, metadata, created_at, updated_at FROM chat_sessions 
             WHERE user_id = ? 
             ORDER BY updated_at DESC
         """,
