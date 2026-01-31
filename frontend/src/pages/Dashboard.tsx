@@ -222,127 +222,149 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     onToggle={() => { setIsSidebarCollapsed(!isSidebarCollapsed); }}
                 />
 
-                <div
-                    className={`w-full h-full relative z-10 flex flex-col items-center pl-0 transition-all duration-150 ease-linear ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-                    style={{ paddingLeft: isSidebarCollapsed ? '64px' : '260px' }}
+                <motion.div
+                    className={`w-full h-full relative z-10 flex flex-col items-center pl-0 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+                    animate={{ paddingLeft: isSidebarCollapsed ? 64 : 260 }}
+                    transition={{ duration: 0.15, ease: "linear" }}
                 >
-                    {/* --- Overview View --- */}
-                    {activeTab === 'overview' && (
-                        <div className="flex flex-col items-center w-full w-full max-w-7xl px-4">
-                            {/* Hero / Header Section */}
+                    <AnimatePresence mode="wait">
+                        {/* --- Overview View --- */}
+                        {activeTab === 'overview' && (
                             <motion.div
-                                layout
-                                className={`w-full max-w-4xl px-4 z-10 flex flex-col items-center transition-all duration-700 ${isLifted ? 'mt-8' : 'mt-[25vh]'}`}
+                                key="overview"
+                                exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+                                className="flex flex-col items-center w-full w-full max-w-7xl px-4"
                             >
-                                {!isLifted ? (
-                                    <Typewriter
-                                        text="Let your wealth grow organically."
-                                        className="font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-200 mb-8 text-center tracking-tight text-5xl md:text-7xl min-h-[1.2em]"
-                                    />
-                                ) : (
-                                    <motion.h1
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        className="font-serif font-bold text-white mb-6 text-center tracking-tight text-3xl"
-                                    >
-                                        Financial Intelligence Agent
-                                    </motion.h1>
-                                )}
-
-                                <form onSubmit={handleSearch} className="w-full relative max-w-2xl">
-                                    <div className="relative group">
-                                        <div className={`absolute -inset-1 bg-gradient-to-r from-primary to-ai rounded-2xl blur opacity-25 group-hover:opacity-60 transition duration-1000 group-hover:duration-200 ${loadingStage > 0 && loadingStage < 3 ? 'animate-pulse' : ''}`}></div>
-                                        <textarea
-                                            value={query}
-                                            onChange={(e) => {
-                                                setQuery(e.target.value);
-                                                // Auto-resize textarea
-                                                e.target.style.height = 'auto';
-                                                e.target.style.height = `${String(Math.min(e.target.scrollHeight, 150))}px`;
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    void handleSearch(e);
-                                                }
-                                            }}
-                                            placeholder="ask me anything..."
-                                            rows={1}
-                                            className="relative w-full glass-input text-lg py-4 pl-12 pr-28 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50 resize-none overflow-y-auto no-scrollbar min-h-[56px] max-h-[200px]"
+                                {/* Hero / Header Section */}
+                                <motion.div
+                                    layout
+                                    className={`w-full max-w-4xl px-4 z-10 flex flex-col items-center transition-all duration-700 ${isLifted ? 'mt-8' : 'mt-[25vh]'}`}
+                                >
+                                    {!isLifted ? (
+                                        <Typewriter
+                                            text="Let your wealth grow organically."
+                                            className="font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-200 mb-8 text-center tracking-tight text-5xl md:text-7xl min-h-[1.2em]"
                                         />
-                                        <Search className="absolute left-4 top-5 text-text-secondary w-5 h-5" />
-
-                                        <button
-                                            type="submit"
-                                            className="absolute right-2 top-2 neon-button !rounded-xl !px-6 h-10 flex items-center gap-2 group-hover:bg-ai/30 transition-all"
+                                    ) : (
+                                        <motion.h1
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            className="font-serif font-bold text-white mb-6 text-center tracking-tight text-3xl"
                                         >
-                                            <span className="text-sm font-semibold tracking-wide">RUN</span>
-                                            <Zap className="w-3 h-3 fill-current" />
-                                        </button>
-                                    </div>
-                                </form>
+                                            Financial Intelligence Agent
+                                        </motion.h1>
+                                    )}
 
-
-                            </motion.div>
-
-                            {/* Dynamic Zones */}
-                            <AnimatePresence>
-                                {loadingStage > 0 && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 40 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ duration: 0.8, delay: 0.2 }}
-                                        className="w-full max-w-3xl mt-12 pb-12"
+                                    <motion.form
+                                        layoutId="active-search-bar"
+                                        onSubmit={handleSearch}
+                                        className="w-full relative max-w-2xl"
+                                        initial={{ borderRadius: "24px" }}
                                     >
-                                        {/* Single Response Card */}
-                                        <div className="glass-card p-8 group hover:border-ai/30 transition-colors">
-                                            <div className="flex items-center gap-3 mb-6">
-                                                <div className="p-2 bg-ai/10 rounded-lg">
-                                                    <Brain className="text-ai w-5 h-5" />
-                                                </div>
-                                                <h2 className="font-serif font-bold text-xl text-white">Agent Response</h2>
+                                        <div className="relative group">
+                                            <div className={`absolute -inset-1 bg-gradient-to-r from-primary to-ai rounded-2xl blur opacity-25 group-hover:opacity-60 transition duration-1000 group-hover:duration-200 ${loadingStage > 0 && loadingStage < 3 ? 'animate-pulse' : ''}`}></div>
+                                            <textarea
+                                                value={query}
+                                                onChange={(e) => {
+                                                    setQuery(e.target.value);
+                                                    // Auto-resize textarea
+                                                    e.target.style.height = 'auto';
+                                                    e.target.style.height = `${String(Math.min(e.target.scrollHeight, 150))}px`;
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        void handleSearch(e);
+                                                    }
+                                                }}
+                                                placeholder="ask me anything..."
+                                                rows={1}
+                                                className="relative w-full glass-input text-lg py-4 pl-12 pr-28 shadow-2xl font-light tracking-wide bg-black/40 backdrop-blur-xl border-white/10 focus:border-primary/50 resize-none overflow-y-auto no-scrollbar min-h-[56px] max-h-[200px]"
+                                            />
+                                            <Search className="absolute left-4 top-5 text-text-secondary w-5 h-5" />
 
-
-                                            </div>
-
-                                            <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                    {data.soft.strategy}
-                                                </ReactMarkdown>
-                                            </div>
-
-                                            <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-end">
-                                                {loadingStage < 4 ? (
-                                                    <div className="flex items-center gap-3 text-ai font-mono text-xs bg-ai/5 px-3 py-1.5 rounded-full border border-ai/10">
-                                                        <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping" />
-                                                        {loadingStage === 1 ? "SCANNING..." : "THINKING..."}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs font-mono text-primary">✓ Complete</span>
-                                                )}
-                                            </div>
+                                            <button
+                                                type="submit"
+                                                className="absolute right-2 top-2 neon-button !rounded-xl !px-6 h-10 flex items-center gap-2 group-hover:bg-ai/30 transition-all"
+                                            >
+                                                <span className="text-sm font-semibold tracking-wide">RUN</span>
+                                                <Zap className="w-3 h-3 fill-current" />
+                                            </button>
                                         </div>
+                                    </motion.form>
 
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    )}
+
+                                </motion.div>
+
+                                {/* Dynamic Zones */}
+                                <AnimatePresence>
+                                    {loadingStage > 0 && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 40 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ duration: 0.8, delay: 0.2 }}
+                                            className="w-full max-w-3xl mt-12 pb-12"
+                                        >
+                                            {/* Single Response Card */}
+                                            <div className="glass-card p-8 group hover:border-ai/30 transition-colors">
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="p-2 bg-ai/10 rounded-lg">
+                                                        <Brain className="text-ai w-5 h-5" />
+                                                    </div>
+                                                    <h2 className="font-serif font-bold text-xl text-white">Agent Response</h2>
+                                                </div>
+
+                                                <div className="prose prose-invert max-w-none prose-p:text-slate-200 prose-p:text-lg prose-p:leading-relaxed prose-strong:text-primary prose-headings:text-white prose-table:w-full prose-th:text-left prose-th:p-2 prose-td:p-2 prose-tr:border-b prose-tr:border-white/10 prose-thead:bg-white/5">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {data.soft.strategy}
+                                                    </ReactMarkdown>
+                                                </div>
+
+                                                <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-end">
+                                                    {loadingStage < 4 ? (
+                                                        <div className="flex items-center gap-3 text-ai font-mono text-xs bg-ai/5 px-3 py-1.5 rounded-full border border-ai/10">
+                                                            <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping" />
+                                                            {loadingStage === 1 ? "SCANNING..." : "THINKING..."}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-mono text-primary">✓ Complete</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+                        )}
+
+                        {/* --- Chat View --- */}
+                        {activeTab === 'chat' && (
+                            <div key="chat" className="w-full h-full">
+                                <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
+                            </div>
+                        )}
+                    </AnimatePresence>
 
                     {/* --- Other Views (Persistent Mounting) --- */}
-                    <div className="w-full relative h-full">
-                        <div className={`w-full h-full ${activeTab === 'vault' ? 'block' : 'hidden'}`}>
-                            <UploadZone session={session} />
-                        </div>
-                        <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
-                            <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
-                        </div>
-                        {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
-                        <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
-                            <StockAnalyticsView session={session} tickers={extractedTickers} />
-                        </div>
+                    <div className="w-full relative h-full hidden">
+                        {/* Hidden container for persistent views if needed, but we are using conditional rendering for animation now. 
+                            However, StockAnalyticsView MUST persist. 
+                        */}
                     </div>
-                </div>
+
+                    <div className={`w-full h-full ${activeTab === 'vault' ? 'block' : 'hidden'}`}>
+                        {/* Vault needs to be outside AnimatePresence if we don't animate it, or inside. 
+                            For now, keeping it here. 
+                         */}
+                        {activeTab === 'vault' && <UploadZone session={session} />}
+                    </div>
+
+                    {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
+                    <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
+                        <StockAnalyticsView session={session} tickers={extractedTickers} />
+                    </div>
+                </motion.div>
             </div>
         </div>
     );

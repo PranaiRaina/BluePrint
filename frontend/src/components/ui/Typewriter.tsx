@@ -10,10 +10,12 @@ interface TypewriterProps {
 
 const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 50, className, onComplete }) => {
     const [displayedText, setDisplayedText] = useState('');
+    const [showCursor, setShowCursor] = useState(true);
 
     useEffect(() => {
         let i = 0;
-        setDisplayedText(''); // Start empty
+        setDisplayedText('');
+        setShowCursor(true);
 
         const interval = setInterval(() => {
             i++;
@@ -22,6 +24,11 @@ const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 50, className, on
             if (i >= text.length) {
                 clearInterval(interval);
                 if (onComplete) onComplete();
+
+                // Fade out cursor after 2 seconds
+                setTimeout(() => {
+                    setShowCursor(false);
+                }, 2000);
             }
         }, speed);
 
@@ -32,8 +39,10 @@ const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 50, className, on
         <motion.span className={className}>
             {displayedText}
             <motion.span
-                animate={{ opacity: [1, 0, 1] }}
-                transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                animate={{ opacity: showCursor ? [1, 0, 1] : 0 }}
+                transition={{
+                    opacity: { duration: 0.8, repeat: showCursor ? Infinity : 0, ease: "linear" }
+                }}
                 className="inline-block w-[3px] h-[1em] bg-primary ml-1 align-middle"
             />
         </motion.span>

@@ -6,6 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import LiveMessage from '../ui/LiveMessage'; // Import the new component
+import Typewriter from '../ui/Typewriter';
 
 interface ChatViewProps {
     session: Session;
@@ -13,7 +14,6 @@ interface ChatViewProps {
     initialQuery?: string;
     onTickers?: (tickers: string[]) => void;
 }
-
 const getUserInitials = (email?: string) => {
     if (!email) return 'U';
     return email.substring(0, 2).toUpperCase();
@@ -161,11 +161,15 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
     return (
         <div className="w-full h-full pt-4 pb-4 px-4 flex flex-col max-w-5xl mx-auto">
             <div className="flex items-center gap-3 mb-6 p-4 border-b border-white/5 shrink-0">
-                <div className="w-10 h-10 rounded-full bg-ai/20 flex items-center justify-center">
-                    <Sparkles className="text-ai w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden">
+                    <img src="/logo.png" alt="BluePrint" className="w-8 h-8 object-contain" />
                 </div>
                 <div>
-                    <h2 className="text-xl font-bold text-white">BluePrint Agent</h2>
+                    <Typewriter
+                        text="BluePrint Agent"
+                        speed={50}
+                        className="text-xl font-bold text-white font-serif tracking-wide"
+                    />
                 </div>
             </div>
 
@@ -218,7 +222,12 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSend} className="mt-4 relative shrink-0">
+            <motion.form
+                layoutId="active-search-bar"
+                onSubmit={handleSend}
+                className="mt-4 relative shrink-0"
+                initial={{ borderRadius: "12px" }}
+            >
                 <input
                     type="text"
                     value={input}
@@ -226,6 +235,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                     placeholder="Ask complex questions about your data..."
                     className="w-full glass-input pr-12 !py-4"
                     disabled={isLoading}
+                    autoFocus
                 />
                 <button
                     type="submit"
@@ -234,7 +244,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 >
                     <Send className="w-5 h-5" />
                 </button>
-            </form>
+            </motion.form>
         </div>
     );
 };

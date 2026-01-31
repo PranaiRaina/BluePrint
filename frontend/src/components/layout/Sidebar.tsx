@@ -108,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <motion.div
             animate={{ width: isCollapsed ? 64 : 260 }}
             transition={{ duration: 0.15, ease: "linear" }}
-            className={`flex flex-col h-[calc(100vh-64px)] bg-black/80 backdrop-blur-xl border-r border-white/10 transition-all duration-150 ease-linear overflow-hidden ${className}`}
+            className={`flex flex-col h-[calc(100vh-64px)] bg-black/80 backdrop-blur-xl border-r border-white/10 overflow-hidden ${className}`}
         >
             {/* Header / Toggle */}
             <div className="p-4 flex items-center justify-between border-b border-white/5">
