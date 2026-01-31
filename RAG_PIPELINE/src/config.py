@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     # Supabase Postgres
     SUPABASE_DB_URL: str = ""
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
 
     # Configuration
     LLM_PROVIDER: str = "gemini"  # Options: "gemini"

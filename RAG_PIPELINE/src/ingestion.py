@@ -3,9 +3,9 @@ import hashlib
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import SupabaseVectorStore
+from supabase import create_client, Client
 from .config import settings
-import chromadb
 
 # PII Redaction
 from presidio_analyzer import AnalyzerEngine
@@ -98,21 +98,65 @@ def remove_pii(text: str) -> str:
         return text
 
 
-# Initialize Chroma
-# We use the PersistentClient to run locally without Docker
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
-
-
 # Vector Store Wrapper
+def get_supabase_client():
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+
 def get_vectorstore():
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001", google_api_key=settings.GOOGLE_API_KEY
+        model="models/text-embedding-004", google_api_key=settings.GOOGLE_API_KEY
     )
-    return Chroma(
-        client=chroma_client,
-        collection_name="rag_documents",
-        embedding_function=embeddings,
+    
+    client = get_supabase_client()
+    
+    return SupabaseVectorStore(
+        client=client,
+        embedding=embeddings,
+        table_name="documents",
+        query_name="match_documents"
     )
+
+def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: float = 0.5):
+    """
+    Perform similarity search using direct RPC call to Supabase.
+    Bypasses LangChain wrapper to avoid SDK compatibility issues.
+    """
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004", google_api_key=settings.GOOGLE_API_KEY
+        )
+        query_vector = embeddings.embed_query(query)
+        
+        client = get_supabase_client()
+        
+        params = {
+            "query_embedding": query_vector,
+            "match_threshold": threshold,
+            "match_count": k,
+            "filter": {"user_id": user_id} if user_id else {}
+        }
+        
+        response = client.rpc("match_documents", params).execute()
+        
+        from langchain_core.documents import Document
+        
+        results = []
+        for match in response.data:
+            results.append(
+                (
+                    Document(
+                        page_content=match["content"], 
+                        metadata=match["metadata"]
+                    ),
+                    match["similarity"]
+                )
+            )
+            
+        return results
+        
+    except Exception as e:
+        print(f"Error in similarity search: {e}")
+        return []
 
 
 async def generate_summary(text: str) -> str:
@@ -146,11 +190,13 @@ async def process_pdf(file_path: str):
             file_hash = hashlib.sha256(f.read()).hexdigest()
 
         vectorstore = get_vectorstore()
+        supabase = get_supabase_client()
 
         # Check if hash exists in metadata
-        # Note: Chroma's get method allows filtering by metadata
-        existing = vectorstore.get(where={"file_hash": file_hash})
-        if existing and existing["ids"]:
+        # Supabase: Query the 'documents' table directly via the client
+        response = supabase.table("documents").select("id").contains("metadata", {"file_hash": file_hash}).limit(1).execute()
+        
+        if response.data:
             return f"Duplicate detected. Document with hash {file_hash[:8]}... already exists."
 
         # 1. Load
@@ -213,12 +259,12 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
         file_hash = hashlib.sha256(file_content).hexdigest()
 
         vectorstore = get_vectorstore()
+        supabase = get_supabase_client()
 
         # Check if hash exists in metadata FOR THIS USER
-        existing = vectorstore.get(
-            where={"$and": [{"file_hash": file_hash}, {"user_id": user_id}]}
-        )
-        if existing and existing["ids"]:
+        response = supabase.table("documents").select("id").contains("metadata", {"file_hash": file_hash, "user_id": user_id}).limit(1).execute()
+
+        if response.data:
             return f"Duplicate detected for user. {filename} already indexed."
 
         # 1. Load (from memory using a temp file for PyPDFLoader)
@@ -286,10 +332,10 @@ async def delete_document_vectors_scoped(filename: str, user_id: str):
     Delete all vectors associated with a specific filename and user_id.
     """
     try:
-        collection = chroma_client.get_or_create_collection(name="rag_documents")
-
-        # Scoped deletion
-        collection.delete(where={"$and": [{"source": filename}, {"user_id": user_id}]})
+        supabase = get_supabase_client()
+        
+        # Scoped deletion via Supabase Client
+        supabase.table("documents").delete().contains("metadata", {"source": filename, "user_id": user_id}).execute()
 
         return True
     except Exception as e:
