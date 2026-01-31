@@ -74,7 +74,7 @@ if SUPABASE_DB_URL:
         kwargs={
             "autocommit": True,
             "row_factory": dict_row,
-            "prepare_threshold": 0,
+            "prepare_threshold": None,  # Disable prepared statements for PGBouncer (Transaction Pooling)
         },
     )
 else:
