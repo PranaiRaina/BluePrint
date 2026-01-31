@@ -17,7 +17,9 @@ from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from supabase import create_client, Client
 from fastapi.responses import StreamingResponse
 import json
-import sqlite3
+import psycopg
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
 from fastapi import UploadFile, File
 
 app = FastAPI(title="Financial Calculation Agent API")
@@ -59,63 +61,42 @@ def check_rate_limit(client_ip: str):
     RATE_LIMIT_STORE[client_ip].append(now)
 
 
-# --- Database Setup ---
-DB_PATH = os.getenv("DB_PATH", "chat_history.db")
+# --- Database Setup (Supabase Postgres) ---
+SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL")
 
-# Initialize Supabase client for storage
+# Initialize Connection Pool
+pool = None
+if SUPABASE_DB_URL:
+    print("Initializing Supabase Postgres Connection Pool...")
+    pool = ConnectionPool(
+        conninfo=SUPABASE_DB_URL,
+        max_size=20,
+        kwargs={
+            "autocommit": True,
+            "row_factory": dict_row,
+            "prepare_threshold": 0,
+        },
+    )
+else:
+    print("WARNING: SUPABASE_DB_URL not found in .env. Database operations will fail.")
+
+
+def get_db():
+    """Context manager for getting a connection from the pool."""
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database pool not initialized.")
+    return pool.connection()
+
+
+# Initialize Supabase client for storage (Bucket logic)
 supabase: Client = create_client(
     os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_JWT_SECRET")
 )
 
 
-# Initialize DB immediately
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    # 1. Chat History Table
-    # 1. Chat History Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # Check for migrations
-    cursor.execute("PRAGMA table_info(chat_history)")
-    columns = [row[1] for row in cursor.fetchall()]
-    if "user_id" not in columns:
-        print("  → Migrating DB: Adding user_id column")
-        cursor.execute(
-            "ALTER TABLE chat_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'fallback-user-id'"
-        )
-
-    # 2. Chat Sessions Table (New)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            session_id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT,
-            metadata TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # Migration for metadata column
-    cursor.execute("PRAGMA table_info(chat_sessions)")
-    session_columns = [row[1] for row in cursor.fetchall()]
-    if "metadata" not in session_columns:
-        print("  → Migrating DB: Adding metadata column to chat_sessions")
-        cursor.execute("ALTER TABLE chat_sessions ADD COLUMN metadata TEXT")
-
-    conn.commit()
-    conn.close()
+    """No-op for migration to Supabase (Schema assumed created via SQL Editor)."""
+    pass
 
 
 init_db()
@@ -123,90 +104,100 @@ init_db()
 
 def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
     """Retrieve recent chat history for a session formatted as text, scoped by user."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT role, content FROM chat_history 
-        WHERE user_id = ? AND session_id = ? 
-        ORDER BY timestamp DESC, id DESC 
-        LIMIT ?
-    """,
-        (user_id, session_id, limit),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT role, content FROM chat_history 
+                    WHERE user_id = %s AND session_id = %s 
+                    ORDER BY timestamp DESC, id DESC 
+                    LIMIT %s
+                """,
+                    (user_id, session_id, limit),
+                )
+                rows = cursor.fetchall()
 
-    # Reverse to chronological order
-    history = rows[::-1]
-    formatted_history = "\n".join([f"{role}: {content}" for role, content in history])
-    return formatted_history
+        # Reverse to chronological order
+        history = rows[::-1]
+        formatted_history = "\n".join(
+            [f"{row['role']}: {row['content']}" for row in history]
+        )
+        return formatted_history
+    except Exception as e:
+        print(f"Error fetching chat history: {e}")
+        return ""
 
 
 def get_chat_history_json(user_id: str, session_id: str, limit: int = 50) -> List[dict]:
     """Retrieve recent chat history for a session formatted as JSON list, scoped by user."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT role, content FROM chat_history 
-        WHERE user_id = ? AND session_id = ? 
-        ORDER BY timestamp DESC, id DESC 
-        LIMIT ?
-    """,
-        (user_id, session_id, limit),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT role, content FROM chat_history 
+                    WHERE user_id = %s AND session_id = %s 
+                    ORDER BY timestamp DESC, id DESC 
+                    LIMIT %s
+                """,
+                    (user_id, session_id, limit),
+                )
+                rows = cursor.fetchall()
 
-    # Reverse to chronological order (Oldest -> Newest)
-    history = rows[::-1]
+        # Reverse to chronological order (Oldest -> Newest)
+        history = rows[::-1]
 
-    # Map backend roles to frontend roles
-    formatted_history = []
-    for role, content in history:
-        frontend_role = "user" if role == "User" else "ai"
-        formatted_history.append({"role": frontend_role, "content": content})
+        # Map backend roles to frontend roles
+        formatted_history = []
+        for row in history:
+            role = row["role"]
+            content = row["content"]
+            frontend_role = "user" if role == "User" else "ai"
+            formatted_history.append({"role": frontend_role, "content": content})
 
-    return formatted_history
+        return formatted_history
+    except Exception as e:
+        print(f"Error fetching chat history JSON: {e}")
+        return []
 
 
 def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
     """Save a single chat entry scoped by user."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (?, ?, ?, ?)",
-        (user_id, session_id, role, content),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO chat_history (user_id, session_id, role, content) VALUES (%s, %s, %s, %s)",
+                    (user_id, session_id, role, content),
+                )
 
-    # Helper to ensure session exists in `chat_sessions` if it was created implicitly
-    # (Or just update its timestamp)
-    _ensure_session_exists(user_id, session_id)
+        # Helper to ensure session exists in `chat_sessions`
+        _ensure_session_exists(user_id, session_id)
+    except Exception as e:
+        print(f"Error saving chat entry: {e}")
 
 
 def _ensure_session_exists(user_id: str, session_id: str):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT session_id FROM chat_sessions WHERE session_id = ?", (session_id,)
-        )
-        if not cursor.fetchone():
-            cursor.execute(
-                "INSERT INTO chat_sessions (session_id, user_id, title) VALUES (?, ?, ?)",
-                (session_id, user_id, "New Conversation"),
-            )
-        else:
-            cursor.execute(
-                "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-                (session_id,),
-            )
-        conn.commit()
-        conn.close()
-    except Exception:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT session_id FROM chat_sessions WHERE session_id = %s",
+                    (session_id,),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO chat_sessions (session_id, user_id, title) VALUES (%s, %s, %s)",
+                        (session_id, user_id, "New Conversation"),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = %s",
+                        (session_id,),
+                    )
+    except Exception as e:
+        print(f"Error ensuring session exists: {e}")
         pass
 
 
@@ -687,23 +678,20 @@ async def list_sessions(user: dict = Depends(get_current_user)):
     """List all chat sessions for the user (Newest first)."""
     user_id = user["sub"]
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT session_id, title, metadata, created_at, updated_at 
+                    FROM chat_sessions 
+                    WHERE user_id = %s 
+                    ORDER BY updated_at DESC
+                """,
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
 
-        cursor.execute(
-            """
-            SELECT session_id, title, metadata, created_at FROM chat_sessions 
-            WHERE user_id = ? 
-            ORDER BY updated_at DESC
-        """,
-            (user_id,),
-        )
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        return {"sessions": [dict(row) for row in rows]}
+        return {"sessions": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -719,17 +707,15 @@ async def create_session(
     session_id = str(uuid.uuid4())
 
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO chat_sessions (session_id, user_id, title)
-            VALUES (?, ?, ?)
-        """,
-            (session_id, user_id, body.title),
-        )
-        conn.commit()
-        conn.close()
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO chat_sessions (session_id, user_id, title)
+                    VALUES (%s, %s, %s)
+                """,
+                    (session_id, user_id, body.title),
+                )
 
         return {"session_id": session_id, "title": body.title}
     except Exception as e:
@@ -743,36 +729,33 @@ async def update_session(
     """Update a session (rename or update metadata)."""
     user_id = user["sub"]
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                if body.title is not None and body.metadata is not None:
+                    cursor.execute(
+                        """
+                        UPDATE chat_sessions SET title = %s, metadata = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE session_id = %s AND user_id = %s
+                    """,
+                        (body.title, body.metadata, session_id, user_id),
+                    )
+                elif body.title is not None:
+                    cursor.execute(
+                        """
+                        UPDATE chat_sessions SET title = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE session_id = %s AND user_id = %s
+                    """,
+                        (body.title, session_id, user_id),
+                    )
+                elif body.metadata is not None:
+                    cursor.execute(
+                        """
+                        UPDATE chat_sessions SET metadata = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE session_id = %s AND user_id = %s
+                    """,
+                        (body.metadata, session_id, user_id),
+                    )
 
-        if body.title is not None and body.metadata is not None:
-            cursor.execute(
-                """
-                UPDATE chat_sessions SET title = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE session_id = ? AND user_id = ?
-            """,
-                (body.title, body.metadata, session_id, user_id),
-            )
-        elif body.title is not None:
-            cursor.execute(
-                """
-                UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE session_id = ? AND user_id = ?
-            """,
-                (body.title, session_id, user_id),
-            )
-        elif body.metadata is not None:
-            cursor.execute(
-                """
-                UPDATE chat_sessions SET metadata = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE session_id = ? AND user_id = ?
-            """,
-                (body.metadata, session_id, user_id),
-            )
-
-        conn.commit()
-        conn.close()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -783,23 +766,20 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
     """Delete a session and its history."""
     user_id = user["sub"]
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Delete session
+                cursor.execute(
+                    "DELETE FROM chat_sessions WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
 
-        # Delete session
-        cursor.execute(
-            "DELETE FROM chat_sessions WHERE session_id = ? AND user_id = ?",
-            (session_id, user_id),
-        )
+                # Delete history
+                cursor.execute(
+                    "DELETE FROM chat_history WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
 
-        # Delete history
-        cursor.execute(
-            "DELETE FROM chat_history WHERE session_id = ? AND user_id = ?",
-            (session_id, user_id),
-        )
-
-        conn.commit()
-        conn.close()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -808,15 +788,14 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
 # Auto-update session timestamp on activity
 def update_session_timestamp(session_id: str):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-            (session_id,),
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = %s",
+                    (session_id,),
+                )
+    except Exception as e:
+        print(f"Error updating session timestamp: {e}")
         pass
 
 
