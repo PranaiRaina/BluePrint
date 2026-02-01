@@ -24,8 +24,6 @@ services:
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - TIMESCALE_HOST=timescaledb
@@ -33,23 +31,9 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
     depends_on:
-      - chroma
       - redis
       - timescaledb
     command: uvicorn ManagerAgent.api:app --host 0.0.0.0 --port 8001
-    networks:
-      - rosehack_network
-
-  # 3. ChromaDB (Vector Database)
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: rosehack_chroma
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
     networks:
       - rosehack_network
 
@@ -78,7 +62,6 @@ services:
       - rosehack_network
 
 volumes:
-  chroma_data:
   timescaledb_data:
 
 

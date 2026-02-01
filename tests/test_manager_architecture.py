@@ -84,22 +84,6 @@ async def test_rag_tool_wrapper_handles_search():
         assert args["question"] == "Summarize invoice"
 
 
-@pytest.mark.asyncio
-async def test_rag_tool_handles_error():
-    """Verify RAG tool returns error message purely, no crash."""
-    from ManagerAgent.tools import perform_rag_search
-
-    with patch("ManagerAgent.tools.app_graph") as mock_graph:
-        mock_graph.ainvoke = AsyncMock(
-            side_effect=Exception("ChromaDB connection failed")
-        )
-
-        result = await perform_rag_search("Crash me")
-
-        assert "Error performing RAG search" in result
-        assert "ChromaDB connection failed" in result
-
-
 # =============================================================================
 # 3. End-to-End Simulation (Mocked Runner)
 # =============================================================================

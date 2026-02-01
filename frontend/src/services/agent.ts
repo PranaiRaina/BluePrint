@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 
-const API_Base = 'http://localhost:8000';
+const API_Base = 'http://localhost:8001';
 
 export interface AgentResponse {
     final_output: string;
