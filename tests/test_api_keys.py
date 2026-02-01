@@ -118,34 +118,8 @@ def test_google():
     except Exception as e:
         print(f"❌ Google Connection Failed: {e}")
 
-
-# --- Groq Test ---
-def test_groq():
-    print("\n--- Testing Groq API ---")
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        print("❌ GROQ_API_KEY missing")
-        return
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [{"role": "user", "content": "hi"}],
-    }
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            print("✅ Groq Working")
-        else:
-            print(f"❌ Groq Error: {response.status_code} {response.text}")
-    except Exception as e:
-        print(f"❌ Groq Connection Failed: {e}")
-
-
 if __name__ == "__main__":
     test_finnhub()
     test_tavily()
     test_wolfram()
     test_google()
-    test_groq()

@@ -25,7 +25,6 @@ dependencies = [
     "langgraph",
     "tavily-python",
     "langchain-tavily",
-    "langchain-groq",
     "pyjwt",
     "scikit-learn>=1.8.0",
     "pandas>=3.0.0",

@@ -20,7 +20,7 @@ class LLMService:
 
     async def analyze_context(self, query: str, context_data: dict) -> str:
         """
-        Sends the user query + stock/portfolio data context to Groq for analysis.
+        Sends the user query + stock/portfolio data context to Gemini for analysis.
         """
 
         # Construct a system prompt that acts as a financial analyst

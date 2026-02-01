@@ -1,4 +1,4 @@
-"""Configuration for CalcAgent - Groq + Wolfram Alpha setup."""
+"""Configuration for CalcAgent - Gemini + Wolfram Alpha setup."""
 
 import os
 from dotenv import load_dotenv
@@ -18,7 +18,7 @@ WOLFRAM_API_URL = "https://api.wolframalpha.com/v2/query"
 
 # Configure Gemini client (OpenAI Compatible)
 # Docs: https://ai.google.dev/gemini-api/docs/openai
-groq_client = AsyncOpenAI(
+gemini_client = AsyncOpenAI(
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     api_key=GOOGLE_API_KEY,
 )
@@ -30,5 +30,5 @@ set_tracing_disabled(True)
 # We use OpenAIChatCompletionsModel to pass the specific Gemini model name cleanly
 MODEL = OpenAIChatCompletionsModel(
     model="gemini-2.0-flash",
-    openai_client=groq_client,
+    openai_client=gemini_client,
 )
