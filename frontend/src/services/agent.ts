@@ -411,9 +411,6 @@ export const agentService = {
         }
     },
 
-    /**
-     * Delete a session.
-     */
     deleteSession: async (sessionId: string, session: Session | null): Promise<boolean> => {
         try {
             const token = session?.access_token;
@@ -431,6 +428,89 @@ export const agentService = {
         } catch (error) {
             console.error("Delete Session Error:", error);
             return false;
+        }
+    },
+
+    // --- Paper Trader ---
+
+    getPortfolios: async (session: Session | null): Promise<any[]> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const response = await fetch(`${API_Base}/paper-trader/portfolios`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (error) {
+            console.error("Fetch Portfolios Error:", error);
+            return [];
+        }
+    },
+
+    createPortfolio: async (name: string, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = { 'Content-Type': 'application/json' };
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const response = await fetch(`${API_Base}/paper-trader/portfolios`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ name })
+            });
+
+            if (!response.ok) throw new Error("Failed to create portfolio");
+            return await response.json();
+        } catch (error) {
+            console.error("Create Portfolio Error:", error);
+            return null;
+        }
+    },
+
+    getPortfolioDetails: async (portfolioId: string, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const response = await fetch(`${API_Base}/paper-trader/portfolios/${portfolioId}`, {
+                method: 'GET',
+                headers
+            });
+
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error("Fetch Portfolio Details Error:", error);
+            return null;
+        }
+    },
+
+    executeTrade: async (portfolioId: string, ticker: string, action: 'BUY' | 'SELL', quantity: number, session: Session | null): Promise<any> => {
+        try {
+            const token = session?.access_token;
+            const headers: HeadersInit = { 'Content-Type': 'application/json' };
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const response = await fetch(`${API_Base}/paper-trader/trade`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ portfolio_id: portfolioId, ticker, action, quantity })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || "Trade failed");
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("Execute Trade Error:", error);
+            throw error;
         }
     }
 };

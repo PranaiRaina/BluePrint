@@ -11,6 +11,7 @@ import ChatView from '../components/views/ChatView';
 import UserProfileView from '../components/views/UserProfileView';
 import StockAnalyticsView from '../components/views/StockAnalyticsView';
 import PortfolioAnalysisView from '../components/views/PortfolioAnalysisView';
+import PaperTraderView from '../components/views/PaperTraderView';
 import Typewriter from '../components/ui/Typewriter';
 
 import type { Session } from '@supabase/supabase-js';
@@ -21,7 +22,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics' | 'simulation'>('overview');
 
     // Helper to generate a unique session ID
     const generateId = () => {
@@ -31,8 +32,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             return `s_${Date.now().toString()}_${Math.random().toString(36).substring(2, 9)}`;
         }
     };
-
-
     // Session Management
     const [currentSessionId, setCurrentSessionId] = useState<string>(() => generateId());
     const [initialChatQuery, setInitialChatQuery] = useState('');
@@ -115,9 +114,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const [extractedTickers, setExtractedTickers] = useState<string[]>([]);
 
 
-
-
-
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     const handleSearch = (e: React.FormEvent) => {
@@ -178,7 +174,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     }, [extractedTickers, currentSessionId, session]);
 
 
-    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics') => {
+    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics' | 'simulation') => {
         // Fix: Removed aggressive redirect that breaks Home tab navigation
         setActiveTab(tab);
     };
@@ -311,10 +307,23 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                 </AnimatePresence>
                             </motion.div>
                         )}
-                    </AnimatePresence>
+
+                        {/* --- Paper Trader View --- */}
+                        {activeTab === 'simulation' && (
+                            <motion.div
+                                key="simulation"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                className="w-full"
+                            >
+                                <PaperTraderView session={session} />
+                            </motion.div>
+                        )}
+                    </AnimatePresence >
 
                     {/* --- Chat View (Persistent) --- */}
-                    <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+                    < div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
                         <ChatView
                             key={`chat_${String(chatKey)}`}
                             session={session}
@@ -323,14 +332,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             onTickers={setExtractedTickers}
                             onSessionCreated={() => { setRefreshSidebar(prev => prev + 1); }}
                         />
-                    </div>
+                    </div >
 
                     {/* --- Other Views (Persistent Mounting) --- */}
-                    <div className="w-full relative h-full hidden">
+                    < div className="w-full relative h-full hidden" >
                         {/* Hidden container for persistent views if needed, but we are using conditional rendering for animation now. 
                             However, StockAnalyticsView MUST persist. 
                         */}
-                    </div>
+                    </div >
 
                     <div className={`w-full h-full ${activeTab === 'vault' ? 'block' : 'hidden'}`}>
                         {/* Vault needs to be outside AnimatePresence if we don't animate it, or inside. 
@@ -361,9 +370,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             />
                         )}
                     </div>
-                </motion.div>
-            </div>
-        </div>
+                </motion.div >
+            </div >
+        </div >
     );
 };
 

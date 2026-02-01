@@ -35,6 +35,12 @@ class FinnhubClient:
                 print(f"Error fetching profile for {symbol}: {e}")
             return {}
 
+    def get_stock_price(self, symbol: str) -> float:
+        """Synchronous wrapper to get just the current price."""
+        import asyncio
+        quote = asyncio.run(self.get_quote(symbol))
+        return float(quote.get("c", 0))
+
     async def filter_market_movers(
         self, symbols: List[str], min_change_percent: float = 0
     ) -> List[Dict]:
