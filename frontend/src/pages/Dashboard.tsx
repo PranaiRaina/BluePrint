@@ -29,7 +29,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const handleNewChat = () => {
         setCurrentSessionId('new');
         setInitialChatQuery('');
-        setIsLifted(false);
         setQuery('');
         setLoadingStage(0);
         setMockInsight(null);
@@ -89,7 +88,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     };
 
     const [query, setQuery] = useState('');
-    const [isLifted, setIsLifted] = useState(false);
     const [loadingStage, setLoadingStage] = useState(0);
     const [mockInsight, setMockInsight] = useState<{ hard: { score: string, yield: string, conf: string }, soft: { source: string, quote: string, strategy: string } } | null>(null);
     const [extractedTickers, setExtractedTickers] = useState<string[]>([]);
