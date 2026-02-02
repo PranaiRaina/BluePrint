@@ -145,7 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
 
                 {groupOrder.map(group => {
-                    const groupSessions = groupedSessions[group] || [];
+                    const groupSessions = groupedSessions[group] ?? [];
                     if (groupSessions.length === 0) return null;
 
                     if (isCollapsed) {

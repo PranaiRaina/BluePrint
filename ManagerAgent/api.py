@@ -877,6 +877,21 @@ async def get_pending_holdings(user: dict = Depends(get_current_user)):
         return {"items": []}
 
 
+@app.post("/v1/portfolio/confirm/{item_id}")
+async def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
+    """Confirm a pending holding (move to verified status)."""
+    try:
+        from RAG_PIPELINE.src.local_store import update_holding_status
+        success = update_holding_status(item_id, "verified")
+        if not success:
+             raise HTTPException(status_code=404, detail="Item not found")
+        return {"status": "success", "message": "Holding verified"}
+    except Exception as e:
+        print(f"Error confirming holding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 if __name__ == "__main__":
     import uvicorn

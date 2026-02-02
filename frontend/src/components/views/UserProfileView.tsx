@@ -7,10 +7,19 @@ interface UserProfileViewProps {
     session: Session;
 }
 
+interface PendingItem {
+    id: string;
+    ticker?: string;
+    asset_name?: string;
+    quantity?: number;
+    price?: number;
+    source_doc?: string;
+    status: string;
+}
+
 const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
     const user = session.user;
     const email = user.email ?? 'No Email';
-    const lastSignIn = new Date(user.last_sign_in_at ?? Date.now()).toLocaleDateString();
 
     // Section Refs for Scrolling
     const overviewRef = useRef<HTMLDivElement>(null);
@@ -20,6 +29,42 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
     const securityRef = useRef<HTMLDivElement>(null);
 
     const [activeSection, setActiveSection] = useState('overview');
+    const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+
+    React.useEffect(() => {
+        // Fetch pending items
+        const fetchPending = async () => {
+            try {
+                const token = session.access_token;
+                const res = await fetch('http://localhost:8001/v1/portfolio/pending', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json() as { items: PendingItem[] };
+                    setPendingItems(data.items);
+                }
+            } catch (e) {
+                console.error("Failed to fetch pending items", e);
+            }
+        };
+        void fetchPending();
+    }, [session]);
+
+    const handleConfirm = async (itemId: string) => {
+        try {
+            const token = session.access_token;
+            const res = await fetch(`http://localhost:8001/v1/portfolio/confirm/${itemId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                // Optimistic UI update
+                setPendingItems(prev => prev.filter(i => i.id !== itemId));
+            }
+        } catch (e) {
+            console.error("Failed to confirm item", e);
+        }
+    };
 
     const scrollToSection = (sectionId: string, ref: React.RefObject<HTMLDivElement>) => {
         setActiveSection(sectionId);
@@ -44,7 +89,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                         {navItems.map((item) => (
                             <button
                                 key={item.id}
-                                onClick={() => scrollToSection(item.id, item.ref)}
+                                onClick={() => { scrollToSection(item.id, item.ref); }}
                                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group ${activeSection === item.id
                                     ? 'bg-primary/10 text-primary'
                                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -194,34 +239,52 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                         <h2 className="text-2xl font-bold text-white">Pending Verification</h2>
                     </div>
 
-                    <div className="glass-card p-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 mb-8">
-                        <div className="flex items-start gap-4">
-                            <div className="p-2 bg-yellow-500/20 rounded-lg text-yellow-500 shrink-0">
-                                <AlertCircle className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-white font-bold text-lg mb-1">Action Required: Verify Extracted Data</h3>
-                                <p className="text-slate-300 text-sm mb-4">
-                                    The Agent found 2 new assets in your recently uploaded <strong>"Fidelity_2024.pdf"</strong>.
-                                    Please confirm details before adding to your portfolio.
-                                </p>
+                    {pendingItems.length > 0 ? (
+                        <div className="glass-card p-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 mb-8">
+                            <div className="flex items-start gap-4">
+                                <div className="p-2 bg-yellow-500/20 rounded-lg text-yellow-500 shrink-0">
+                                    <AlertCircle className="w-6 h-6" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-white font-bold text-lg mb-1">Action Required: Verify Extracted Data</h3>
+                                    <p className="text-slate-300 text-sm mb-4">
+                                        The Agent found recent assets in your uploaded documents.
+                                        Please confirm details before adding to your portfolio.
+                                    </p>
 
-                                <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <span className="font-mono text-yellow-500 font-bold">HOOD</span>
-                                        <span className="text-white">Robinhood Markets</span>
-                                        <span className="text-slate-400 text-sm">500 Shares @ $12.40</span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 text-sm transition-colors">Edit</button>
-                                        <button className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 text-sm font-medium transition-colors flex items-center gap-1">
-                                            <CheckCircle2 className="w-3 h-3" /> Confirm
-                                        </button>
+                                    <div className="space-y-3">
+                                        {pendingItems.map((item) => (
+                                            <div key={item.id} className="bg-black/40 rounded-xl p-4 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <span className="font-mono text-yellow-500 font-bold">{item.ticker ?? 'UNKNOWN'}</span>
+                                                    <span className="text-white">{item.asset_name ?? 'Unknown Asset'}</span>
+                                                    <span className="text-slate-400 text-sm">
+                                                        {item.quantity ?? 0} Shares @ {item.price != null ? `$${String(item.price)}` : 'Unknown Price'}
+                                                    </span>
+                                                    <span className="text-xs text-slate-500 italic ml-2">from {item.source_doc ?? 'Unknown'}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 text-sm transition-colors">Edit</button>
+                                                    <button
+                                                        onClick={() => { void handleConfirm(item.id); }}
+                                                        className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 text-sm font-medium transition-colors flex items-center gap-1"
+                                                    >
+                                                        <CheckCircle2 className="w-3 h-3" /> Confirm
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="bg-white/5 rounded-2xl p-8 text-center border border-white/10">
+                            <CheckCircle2 className="w-12 h-12 text-emerald-500/20 mx-auto mb-3" />
+                            <h3 className="text-slate-300 font-medium">All caught up!</h3>
+                            <p className="text-slate-500 text-sm">No pending items to verify.</p>
+                        </div>
+                    )}
                 </div>
 
                 <hr className="border-t border-dashed border-white/10 my-12" />

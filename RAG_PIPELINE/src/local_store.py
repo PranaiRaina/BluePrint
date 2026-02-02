@@ -31,6 +31,20 @@ def save_holding(holding: Dict[str, Any]):
     with open(STORE_FILE, "w") as f:
         json.dump(holdings, f, indent=2)
 
+def update_holding_status(holding_id: str, new_status: str):
+    holdings = load_holdings()
+    updated = False
+    for item in holdings:
+        if item.get("id") == holding_id:
+            item["status"] = new_status
+            updated = True
+            break
+    
+    if updated:
+        with open(STORE_FILE, "w") as f:
+            json.dump(holdings, f, indent=2)
+    return updated
+
 def clear_store():
     with open(STORE_FILE, "w") as f:
         json.dump([], f)
