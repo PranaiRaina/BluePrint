@@ -9,13 +9,18 @@ export interface GlassCardProps {
     change: number; // Percent change
     value: number;
     color?: string; // Hex or tailwind class
+    onClick?: () => void;
 }
 
-const GlassCard: React.FC<GlassCardProps> = ({ ticker, name, shares, price, change, value, color = "#10b981" }) => {
+const GlassCard: React.FC<GlassCardProps> = ({ ticker, name, shares, price, change, value, color = "#10b981", onClick }) => {
     const isPositive = change >= 0;
 
     return (
-        <div className="relative w-80 h-48 rounded-3xl overflow-hidden glass-card border border-white/10 group hover:border-primary/30 transition-all duration-300 flex-shrink-0">
+        <button
+            type="button"
+            onClick={onClick}
+            className="relative w-80 h-48 rounded-3xl overflow-hidden glass-card border border-white/10 group hover:border-primary/30 transition-all duration-300 flex-shrink-0 text-left"
+        >
             {/* Background Gradient Blob */}
             <div
                 className="absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none transition-all group-hover:opacity-40"
@@ -25,12 +30,12 @@ const GlassCard: React.FC<GlassCardProps> = ({ ticker, name, shares, price, chan
             <div className="relative z-10 p-6 h-full flex flex-col justify-between">
                 {/* Header */}
                 <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center font-bold text-white border border-white/10">
-                            {ticker}
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center font-bold text-white border border-white/10 text-xs flex-shrink-0">
+                            {ticker.slice(0, 4)}
                         </div>
-                        <div>
-                            <div className="text-white font-bold tracking-wide">{name}</div>
+                        <div className="min-w-0">
+                            <div className="text-white font-bold tracking-wide truncate max-w-[160px]">{name}</div>
                             <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
                                 <span>{shares} SHARES</span>
                                 <span className="text-slate-600">•</span>
@@ -38,7 +43,11 @@ const GlassCard: React.FC<GlassCardProps> = ({ ticker, name, shares, price, chan
                             </div>
                         </div>
                     </div>
-                    <button className="text-slate-500 hover:text-white transition-colors">
+                    <button
+                        type="button"
+                        className="text-slate-500 hover:text-white transition-colors flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); }}
+                    >
                         <MoreHorizontal className="w-5 h-5" />
                     </button>
                 </div>
@@ -74,7 +83,7 @@ const GlassCard: React.FC<GlassCardProps> = ({ ticker, name, shares, price, chan
                     </div>
                 </div>
             </div>
-        </div>
+        </button>
     );
 };
 

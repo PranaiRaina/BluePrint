@@ -5,6 +5,7 @@ import GlassCard from '../profile/GlassCard';
 
 interface UserProfileViewProps {
     session: Session;
+    onAnalyze?: (ticker: string) => void;
 }
 
 interface PendingItem {
@@ -17,7 +18,7 @@ interface PendingItem {
     status: string;
 }
 
-const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
+const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze }) => {
     const user = session.user;
     const email = user.email ?? 'No Email';
 
@@ -32,6 +33,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
     const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
     const [verifiedItems, setVerifiedItems] = useState<PendingItem[]>([]);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
     const [newAsset, setNewAsset] = useState({ ticker: '', asset_name: '', quantity: '', price: '' });
 
     // Fetch both pending and verified holdings
@@ -265,6 +267,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                         change={0}
                                         value={(item.quantity ?? 0) * (item.price ?? 0)}
                                         color={colors[index % colors.length]}
+                                        onClick={() => { setSelectedItem(item); }}
                                     />
                                 );
                             })
@@ -477,6 +480,77 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                 className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/80 transition-colors"
                             >
                                 Add Asset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Holding Detail Modal */}
+            {selectedItem && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg mx-4">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary text-lg">
+                                        {selectedItem.ticker?.slice(0, 4) ?? 'N/A'}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white">{selectedItem.asset_name ?? selectedItem.ticker}</h3>
+                                        <p className="text-slate-400 text-sm">{selectedItem.ticker}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { setSelectedItem(null); }}
+                                className="text-slate-500 hover:text-white text-2xl leading-none"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                <div className="text-xs text-slate-500 uppercase mb-1">Shares</div>
+                                <div className="text-xl font-bold text-white">{selectedItem.quantity?.toLocaleString() ?? 0}</div>
+                            </div>
+                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                <div className="text-xs text-slate-500 uppercase mb-1">Avg Price</div>
+                                <div className="text-xl font-bold text-white">${selectedItem.price?.toLocaleString() ?? 0}</div>
+                            </div>
+                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                <div className="text-xs text-slate-500 uppercase mb-1">Total Value</div>
+                                <div className="text-xl font-bold text-white">
+                                    ${((selectedItem.quantity ?? 0) * (selectedItem.price ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </div>
+                            </div>
+                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                <div className="text-xs text-slate-500 uppercase mb-1">Source</div>
+                                <div className="text-sm font-medium text-white truncate">{selectedItem.source_doc ?? 'Manual'}</div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => { setSelectedItem(null); }}
+                                className="flex-1 px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-colors"
+                            >
+                                Close
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onAnalyze && selectedItem.ticker) {
+                                        onAnalyze(selectedItem.ticker);
+                                        setSelectedItem(null);
+                                    }
+                                }}
+                                className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/80 transition-colors"
+                            >
+                                View Analysis
                             </button>
                         </div>
                     </div>

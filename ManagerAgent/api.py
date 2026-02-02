@@ -17,6 +17,7 @@ from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from supabase import create_client, Client
 from fastapi.responses import StreamingResponse
 import json
+import uuid
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from fastapi import UploadFile, File
@@ -392,8 +393,16 @@ async def chat_stream(request: Request, body: AgentRequest):
 
     async def event_generator():
         try:
+            # 0. Handle 'new' session - generate real UUID if frontend didn't (safety fallback)
+            actual_session_id = body.session_id
+            if body.session_id == 'new':
+                actual_session_id = str(uuid.uuid4())
+                # Note: No need to emit back anymore as frontend uses real IDs now
+                # but we'll include it for tool consistency just in case
+                yield f"data: {json.dumps({'type': 'status', 'content': 'Initializing new session...'})}\n\n"
+
             # 1. Retrieve History
-            history = get_chat_history(user_id, body.session_id)
+            history = get_chat_history(user_id, actual_session_id)
 
             # 2. Analyze Intent
             yield f"data: {json.dumps({'type': 'status', 'content': 'Analyzing intent...'})}\n\n"
@@ -467,7 +476,7 @@ async def chat_stream(request: Request, body: AgentRequest):
 
             # 4. Save History (After stream completes - Atomic Pair)
             final_text = "".join(full_response_buffer)
-            save_chat_pair(user_id, body.session_id, body.query, final_text)
+            save_chat_pair(user_id, actual_session_id, body.query, final_text)
 
             # End of stream
             yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"

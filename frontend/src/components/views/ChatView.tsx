@@ -13,13 +13,14 @@ interface ChatViewProps {
     sessionId: string;
     initialQuery?: string;
     onTickers?: (tickers: string[]) => void;
+    onSessionCreated?: () => void;
 }
 const getUserInitials = (email?: string) => {
     if (!email) return 'U';
     return email.substring(0, 2).toUpperCase();
 };
 
-const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, onTickers }) => {
+const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, onTickers, onSessionCreated }) => {
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -40,52 +41,42 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         scrollToBottom();
     }, [messages, isLoading, isHistoryLoading]);
 
-    const prevSessionId = useRef<string>("");
+
 
     useEffect(() => {
+        let isStale = false;
         const loadHistory = async () => {
-            if (!session.user.id) return;
+            if (!session?.user?.id || !sessionId) return;
 
-            // 1. If we switched sessions, handle clearing carefully
-            if (sessionId !== prevSessionId.current) {
-                // If moving FROM 'new' TO a real UUID, DON'T clear.
-                // The active stream or initialQuery is already managing this turn.
-                const isInitialTransition = prevSessionId.current === 'new' && sessionId !== 'new';
+            // Reset messages only if truly necessary (e.g. initial render or genuine switch)
+            setMessages([]);
+            setIsHistoryLoading(true);
 
-                if (!isInitialTransition) {
-                    setMessages([]);
+            try {
+                const history = await agentService.getHistory(sessionId, session);
+
+                if (isStale) return;
+
+                // Only load history if we don't have a pending initial auto-query.
+                // For sidebar selections, initialQuery will be empty ('').
+                if (!initialQuery) {
+                    setMessages(history);
                 }
-                prevSessionId.current = sessionId;
-
-                if (sessionId === 'new') {
-                    setIsHistoryLoading(false);
-                    return;
-                }
-            }
-
-            // 2. Load history for existing sessions
-            if (sessionId && sessionId !== 'new') {
-                setIsHistoryLoading(true);
-                try {
-                    const history = await agentService.getHistory(sessionId, session);
-
-                    // Critical: ONLY apply this history if we are still on the same sessionId
-                    if (prevSessionId.current === sessionId) {
-                        // If we have an initial query running, the stream will handle the UI.
-                        // Don't overwrite the active stream with old history until it's done.
-                        if (!initialQuery) {
-                            setMessages(history);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to load history", e);
-                } finally {
+            } catch (e) {
+                console.error("Failed to load history", e);
+            } finally {
+                if (!isStale) {
                     setIsHistoryLoading(false);
                 }
             }
         };
+
         void loadHistory();
-    }, [session.user.id, sessionId, initialQuery, session]);
+
+        return () => {
+            isStale = true;
+        };
+    }, [sessionId, initialQuery, session]);
 
     const processQuery = React.useCallback(async (text: string) => {
         if (!text.trim()) return;
@@ -93,7 +84,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         // Reset stream Ref
         streamContentRef.current = "";
 
-        // Add User Message and AI Placeholder using functional update
+        // UI Update: Add user message and empty AI placeholder
         setMessages(prev => [
             ...prev,
             { role: 'user' as const, content: text },
@@ -124,7 +115,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         // Final consistency update
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            if (lastMsg.role === 'ai') {
+                            if (lastMsg?.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current }
@@ -134,14 +125,15 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         });
                         setIsLoading(false);
                         setLoadingStatus("Thinking...");
+                        if (onSessionCreated) onSessionCreated();
                     },
                     onError: (err) => {
                         console.error(err);
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            const errorMessage = err;
+                            const errorMessage = err || "An unknown error occurred";
                             const errorMsg = `\n\n ** Error:** ${errorMessage} `;
-                            if (lastMsg.role === 'ai') {
+                            if (lastMsg?.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     { ...lastMsg, content: streamContentRef.current + errorMsg }
@@ -225,8 +217,8 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                                 contentRef={streamContentRef}
                                                 isStreaming={isLoading}
                                             />
-                                            <div className="mt-2 flex items-center gap-2 text-xs font-mono text-ai/70 bg-ai/5 px-2 py-1 rounded border border-ai/10">
-                                                <div className="w-1.5 h-1.5 bg-ai rounded-full animate-ping shrink-0" />
+                                            <div className="mt-4 flex items-center justify-center gap-3 text-sm font-mono text-ai/70 bg-ai/5 px-6 py-4 rounded-lg border border-ai/10">
+                                                <div className="w-2 h-2 bg-ai rounded-full animate-ping shrink-0" />
                                                 <span>{loadingStatus}</span>
                                             </div>
                                         </div>

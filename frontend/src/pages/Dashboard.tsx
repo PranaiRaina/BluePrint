@@ -21,20 +21,32 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile'>('overview');
+
+    // Helper to generate a unique session ID
+    const generateId = () => {
+        try {
+            return crypto.randomUUID();
+        } catch (e) {
+            return `s_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        }
+    };
+
     // Session Management
-    const [currentSessionId, setCurrentSessionId] = useState<string>('new');
+    const [currentSessionId, setCurrentSessionId] = useState<string>(() => generateId());
     const [initialChatQuery, setInitialChatQuery] = useState('');
+    const [chatKey, setChatKey] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
     const lastSavedMetadata = React.useRef<string>("");
 
     const handleNewChat = () => {
-        setCurrentSessionId('new');
+        setCurrentSessionId(generateId());
         setInitialChatQuery('');
         setQuery('');
         setLoadingStage(0);
         setMockInsight(null);
         setExtractedTickers([]); // <--- Clear previous tickers
-        setActiveTab('overview');
+        setChatKey(prev => prev + 1); // Force ChatView remount
+        setActiveTab('chat'); // Switch to chat when starting new
     };
 
     // Helper to extract stock tickers from text (Simplified Fallback)
@@ -54,6 +66,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const handleSessionSelect = (session: ChatSession) => {
         setCurrentSessionId(session.session_id);
         setInitialChatQuery('');
+        setChatKey(prev => prev + 1);
 
         // Always switch to chat tab when a session is selected
         if (activeTab !== 'chat') {
@@ -116,40 +129,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     strategy: ""
                 }
             });
-
-            // Create Session if New
-            let activeSession = currentSessionId;
-            if (activeSession === 'new') {
-                const newTitle = query.length > 30 ? query.substring(0, 30) + '...' : query;
-                const newSess = await agentService.createSession(newTitle, session);
-                if (newSess?.session_id) {
-                    activeSession = newSess.session_id;
-                    setCurrentSessionId(activeSession);
-                    setRefreshSidebar(prev => prev + 1);
-                }
-            }
-
-            // Redirect to Chat View with Query
             setInitialChatQuery(query);
             setActiveTab('chat');
-            setLoadingStage(0); // Reset dashboard loading state as we are leaving
-            // setQuery(''); // Do NOT clear search bar yet, wait for chat to pick it up? 
-            // Actually ChatView takes initialQuery prop. 
-            // But we need to define the onTickers callback passed to ChatView?
-            // Wait, Dashboard passes initialQuery to ChatView, and ChatView calls agentService.streamChat.
-            // So ChatView needs to be updated to accept onTickers callback or handle it internally?
-            // Actually, Dashboard holds the `extractedTickers` state which drives `StockAnalyticsView`.
-            // So ChatView needs to Bubble up the tickers to Dashboard.
-
-            // Let's check ChatView. For now, since I can't see ChatView, I assume I need to pass a callback to it.
-            // But I cannot edit ChatView in this tool call.
-            // So I will assume ChatView needs an update.
-
-            setQuery(''); // Clear search bar
+            setLoadingStage(0); 
+            setQuery(''); 
 
         } catch (error) {
             console.error(error);
-            setLoadingStage(0); // Reset on error
+            setLoadingStage(0); 
             alert("Agent failed to respond. Is the backend running on port 8001?");
         }
     };
@@ -161,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     // Auto-save session state (debounced)
     useEffect(() => {
-        if (currentSessionId && currentSessionId !== 'new') {
+        if (currentSessionId) {
             const newMetadataObj = { extractedTickers };
             const newMetadataStr = JSON.stringify(newMetadataObj);
 
@@ -180,13 +167,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
 
     const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile') => {
-        if (tab === 'overview') {
-            // If we have an active session, Home tab should just show it
-            if (currentSessionId !== 'new') {
-                setActiveTab('chat');
-                return;
-            }
-        }
+        // Fix: Removed aggressive redirect that breaks Home tab navigation
         setActiveTab(tab);
     };
 
@@ -322,7 +303,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
                     {/* --- Chat View (Persistent) --- */}
                     <div className={`w-full h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
-                        <ChatView session={session} sessionId={currentSessionId} initialQuery={initialChatQuery} onTickers={setExtractedTickers} />
+                        <ChatView
+                            key={`chat_${String(chatKey)}`}
+                            session={session}
+                            sessionId={currentSessionId}
+                            initialQuery={initialChatQuery}
+                            onTickers={setExtractedTickers}
+                            onSessionCreated={() => { setRefreshSidebar(prev => prev + 1); }}
+                        />
                     </div>
 
                     {/* --- Other Views (Persistent Mounting) --- */}
@@ -340,7 +328,12 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     </div>
 
                     <div className={`w-full h-full ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
-                        {activeTab === 'profile' && <UserProfileView session={session} />}
+                        {activeTab === 'profile' && <UserProfileView session={session} onAnalyze={(ticker) => {
+                            setInitialChatQuery(`Analyze ${ticker} stock - give me a comprehensive research report including recent news, financials, and your recommendation.`);
+                            setCurrentSessionId(generateId());
+                            setChatKey(prev => prev + 1);
+                            setActiveTab('chat');
+                        }} />}
                     </div>
 
                     {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
