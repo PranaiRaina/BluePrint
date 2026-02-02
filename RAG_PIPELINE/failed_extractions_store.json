@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "ticker": "VTI",
+    "quantity": 45.0,
+    "price": 240.12,
+    "asset_name": "Vanguard Total Stock Market",
+    "source_doc": "data.pdf",
+    "id": "temp_1",
+    "status": "verified",
+    "timestamp": "2024-02-01T20:00:00Z"
+  },
+  {
+    "ticker": "AAPL",
+    "quantity": 10.0,
+    "price": 192.5,
+    "asset_name": "Apple Inc.",
+    "source_doc": "data.pdf",
+    "id": "temp_2",
+    "status": "verified",
+    "timestamp": "2024-02-01T20:00:00Z"
+  },
+  {
+    "ticker": "ETH",
+    "quantity": 1.5,
+    "price": 2450.0,
+    "asset_name": "Ethereum",
+    "source_doc": "data.pdf",
+    "id": "temp_3",
+    "status": "verified",
+    "timestamp": "2024-02-01T20:00:00Z"
+  }
+]

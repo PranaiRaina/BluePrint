@@ -892,6 +892,19 @@ async def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
 
 
 
+@app.get("/v1/portfolio/holdings")
+async def get_verified_holdings(user: dict = Depends(get_current_user)):
+    """Get verified holdings from local store."""
+    try:
+        from RAG_PIPELINE.src.local_store import load_holdings
+        items = load_holdings()
+        # Filter for verified items
+        verified = [item for item in items if item.get("status") == "verified"]
+        return {"items": verified}
+    except Exception as e:
+        print(f"Error loading verified holdings: {e}")
+        return {"items": []}
+
 
 if __name__ == "__main__":
     import uvicorn

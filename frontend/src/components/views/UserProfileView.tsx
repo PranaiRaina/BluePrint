@@ -30,24 +30,36 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
 
     const [activeSection, setActiveSection] = useState('overview');
     const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+    const [verifiedItems, setVerifiedItems] = useState<PendingItem[]>([]);
 
+    // Fetch both pending and verified holdings
     React.useEffect(() => {
-        // Fetch pending items
-        const fetchPending = async () => {
+        const fetchHoldings = async () => {
             try {
                 const token = session.access_token;
-                const res = await fetch('http://localhost:8001/v1/portfolio/pending', {
+
+                // Fetch pending
+                const pendingRes = await fetch('http://localhost:8001/v1/portfolio/pending', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (res.ok) {
-                    const data = await res.json() as { items: PendingItem[] };
+                if (pendingRes.ok) {
+                    const data = await pendingRes.json() as { items: PendingItem[] };
                     setPendingItems(data.items);
                 }
+
+                // Fetch verified
+                const verifiedRes = await fetch('http://localhost:8001/v1/portfolio/holdings', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (verifiedRes.ok) {
+                    const data = await verifiedRes.json() as { items: PendingItem[] };
+                    setVerifiedItems(data.items);
+                }
             } catch (e) {
-                console.error("Failed to fetch pending items", e);
+                console.error("Failed to fetch holdings", e);
             }
         };
-        void fetchPending();
+        void fetchHoldings();
     }, [session]);
 
     const handleConfirm = async (itemId: string) => {
@@ -58,8 +70,12 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
-                // Optimistic UI update
-                setPendingItems(prev => prev.filter(i => i.id !== itemId));
+                // Move item from pending to verified
+                const confirmedItem = pendingItems.find(i => i.id === itemId);
+                if (confirmedItem) {
+                    setPendingItems(prev => prev.filter(i => i.id !== itemId));
+                    setVerifiedItems(prev => [...prev, { ...confirmedItem, status: 'verified' }]);
+                }
             }
         } catch (e) {
             console.error("Failed to confirm item", e);
@@ -215,10 +231,26 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                     </div>
 
                     <div className="flex gap-6 overflow-x-auto pb-8 pt-2 px-1 -mx-1 snap-x no-scrollbar">
-                        <GlassCard ticker="AAPL" name="Apple Inc." shares={150} price={185.50} change={1.2} value={27825} color="#3b82f6" />
-                        <GlassCard ticker="NVDA" name="NVIDIA Corp." shares={45} price={650.25} change={4.5} value={29261} color="#10b981" />
-                        <GlassCard ticker="MSFT" name="Microsoft" shares={200} price={410.10} change={-0.5} value={82020} color="#0ea5e9" />
-                        <GlassCard ticker="TSLA" name="Tesla Inc." shares={80} price={190.00} change={-2.1} value={15200} color="#ef4444" />
+                        {verifiedItems.length > 0 ? (
+                            verifiedItems.map((item) => (
+                                <GlassCard
+                                    key={item.id}
+                                    ticker={item.ticker ?? 'N/A'}
+                                    name={item.asset_name ?? 'Unknown'}
+                                    shares={item.quantity ?? 0}
+                                    price={item.price ?? 0}
+                                    change={0} // TODO: Fetch live change from Finnhub
+                                    value={(item.quantity ?? 0) * (item.price ?? 0)}
+                                    color="#10b981"
+                                />
+                            ))
+                        ) : (
+                            <div className="w-full text-center py-12 text-slate-500">
+                                <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                <p>No verified holdings yet.</p>
+                                <p className="text-xs mt-1">Confirm pending items to add them here.</p>
+                            </div>
+                        )}
                         <div className="w-48 h-48 rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all cursor-pointer flex-shrink-0 group snap-start">
                             <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                                 <span className="text-2xl font-light">+</span>
