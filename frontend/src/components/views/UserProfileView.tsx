@@ -31,6 +31,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
     const [activeSection, setActiveSection] = useState('overview');
     const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
     const [verifiedItems, setVerifiedItems] = useState<PendingItem[]>([]);
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newAsset, setNewAsset] = useState({ ticker: '', asset_name: '', quantity: '', price: '' });
 
     // Fetch both pending and verified holdings
     React.useEffect(() => {
@@ -80,6 +82,25 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
         } catch (e) {
             console.error("Failed to confirm item", e);
         }
+    };
+
+    const handleAddAsset = () => {
+        if (!newAsset.ticker || !newAsset.quantity) return;
+
+        const newItem: PendingItem = {
+            id: `manual_${String(Date.now())}`,
+            ticker: newAsset.ticker.toUpperCase(),
+            asset_name: newAsset.asset_name || newAsset.ticker.toUpperCase(),
+            quantity: parseFloat(newAsset.quantity),
+            price: newAsset.price ? parseFloat(newAsset.price) : 0,
+            source_doc: 'Manual Entry',
+            status: 'verified'
+        };
+
+        // Add directly to verified items (manual entries skip verification)
+        setVerifiedItems(prev => [...prev, newItem]);
+        setNewAsset({ ticker: '', asset_name: '', quantity: '', price: '' });
+        setShowAddModal(false);
     };
 
     const scrollToSection = (sectionId: string, ref: React.RefObject<HTMLDivElement>) => {
@@ -230,20 +251,23 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                         </button>
                     </div>
 
-                    <div className="flex gap-6 overflow-x-auto pb-8 pt-2 px-1 -mx-1 snap-x no-scrollbar">
+                    <div className="flex gap-6 overflow-x-auto pb-8 pt-2 px-1 -mx-1 no-scrollbar">
                         {verifiedItems.length > 0 ? (
-                            verifiedItems.map((item) => (
-                                <GlassCard
-                                    key={item.id}
-                                    ticker={item.ticker ?? 'N/A'}
-                                    name={item.asset_name ?? 'Unknown'}
-                                    shares={item.quantity ?? 0}
-                                    price={item.price ?? 0}
-                                    change={0} // TODO: Fetch live change from Finnhub
-                                    value={(item.quantity ?? 0) * (item.price ?? 0)}
-                                    color="#10b981"
-                                />
-                            ))
+                            verifiedItems.map((item, index) => {
+                                const colors = ['#3b82f6', '#10b981', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444'];
+                                return (
+                                    <GlassCard
+                                        key={item.id}
+                                        ticker={item.ticker ?? 'N/A'}
+                                        name={item.asset_name ?? 'Unknown'}
+                                        shares={item.quantity ?? 0}
+                                        price={item.price ?? 0}
+                                        change={0}
+                                        value={(item.quantity ?? 0) * (item.price ?? 0)}
+                                        color={colors[index % colors.length]}
+                                    />
+                                );
+                            })
                         ) : (
                             <div className="w-full text-center py-12 text-slate-500">
                                 <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -251,12 +275,16 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                 <p className="text-xs mt-1">Confirm pending items to add them here.</p>
                             </div>
                         )}
-                        <div className="w-48 h-48 rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all cursor-pointer flex-shrink-0 group snap-start">
+                        <button
+                            type="button"
+                            onClick={() => { setShowAddModal(true); }}
+                            className="w-48 h-48 rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all cursor-pointer flex-shrink-0 group"
+                        >
                             <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                                 <span className="text-2xl font-light">+</span>
                             </div>
                             <span className="text-sm font-medium">Add Asset</span>
-                        </div>
+                        </button>
                     </div>
                 </div>
 
@@ -378,6 +406,82 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                 <div className="h-24" />
 
             </div>
+
+            {/* Add Asset Modal */}
+            {showAddModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4">
+                        <h3 className="text-xl font-bold text-white mb-4">Add New Asset</h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="ticker-input" className="block text-sm text-slate-400 mb-1">Ticker Symbol *</label>
+                                <input
+                                    id="ticker-input"
+                                    type="text"
+                                    placeholder="e.g. AAPL"
+                                    value={newAsset.ticker}
+                                    onChange={(e) => { setNewAsset(prev => ({ ...prev, ticker: e.target.value })); }}
+                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white placeholder:text-slate-500 focus:border-primary/50 focus:outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="asset-name-input" className="block text-sm text-slate-400 mb-1">Asset Name</label>
+                                <input
+                                    id="asset-name-input"
+                                    type="text"
+                                    placeholder="e.g. Apple Inc."
+                                    value={newAsset.asset_name}
+                                    onChange={(e) => { setNewAsset(prev => ({ ...prev, asset_name: e.target.value })); }}
+                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white placeholder:text-slate-500 focus:border-primary/50 focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="shares-input" className="block text-sm text-slate-400 mb-1">Shares *</label>
+                                    <input
+                                        id="shares-input"
+                                        type="number"
+                                        placeholder="100"
+                                        value={newAsset.quantity}
+                                        onChange={(e) => { setNewAsset(prev => ({ ...prev, quantity: e.target.value })); }}
+                                        className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white placeholder:text-slate-500 focus:border-primary/50 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="price-input" className="block text-sm text-slate-400 mb-1">Price ($)</label>
+                                    <input
+                                        id="price-input"
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="150.00"
+                                        value={newAsset.price}
+                                        onChange={(e) => { setNewAsset(prev => ({ ...prev, price: e.target.value })); }}
+                                        className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white placeholder:text-slate-500 focus:border-primary/50 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={() => { setShowAddModal(false); }}
+                                className="flex-1 px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => { handleAddAsset(); }}
+                                className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/80 transition-colors"
+                            >
+                                Add Asset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
