@@ -561,15 +561,29 @@ async def delete_document(filename: str, user: dict = Depends(get_current_user))
 @app.get("/v1/agent/documents")
 async def list_documents(user: dict = Depends(get_current_user)):
     """
-    List all uploaded documents from Supabase Storage.
+    List all uploaded documents from Supabase Storage, searching 1 level deep.
     """
     user_id = user["sub"]
     try:
-        # List files in the user's specific folder in the bucket
+        # List files in the user's root folder
         res = supabase.storage.from_("rag-documents").list(path=user_id)
 
-        # Supabase returns a list of file info objects
-        files = [f["name"] for f in res if f["name"].endswith(".pdf")]
+        files = []
+        for item in res:
+            name = item.get("name", "")
+            if name.endswith(".pdf"):
+                files.append(name)
+            elif item.get("id") is None: # Likely a folder
+                 # Check subfolder
+                 try:
+                     sub_path = f"{user_id}/{name}"
+                     sub_res = supabase.storage.from_("rag-documents").list(path=sub_path)
+                     for sub_item in sub_res:
+                         sub_name = sub_item.get("name", "")
+                         if sub_name.endswith(".pdf"):
+                             files.append(f"{name}/{sub_name}")
+                 except Exception:
+                     continue
 
         return {"documents": files}
     except Exception as e:
@@ -844,6 +858,23 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# --- Portfolio endpoints (Local Store for now) ---
+
+@app.get("/v1/portfolio/pending")
+async def get_pending_holdings(user: dict = Depends(get_current_user)):
+    """Get pending extracted holdings from local store."""
+    try:
+        from RAG_PIPELINE.src.local_store import load_holdings
+        items = load_holdings()
+        # Filter for pending items
+        pending = [item for item in items if item.get("status") == "pending"]
+        return {"items": pending}
+    except Exception as e:
+        print(f"Error loading pending holdings: {e}")
+        return {"items": []}
 
 
 

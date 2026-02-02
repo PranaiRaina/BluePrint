@@ -168,7 +168,7 @@ async def generate_summary(text: str) -> str:
         # Defaulting to Gemini 2.0 Flash (OpenAI Compatible) for speed
         # But for LangChain, ChatGoogleGenerativeAI is native and easy
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash", google_api_key=settings.GOOGLE_API_KEY
+            model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
         )
 
         # Truncate to first 10k chars to avoid token limits on large docs
@@ -178,6 +178,47 @@ async def generate_summary(text: str) -> str:
     except Exception as e:
         print(f"Summary Generation Warning: {e}")
         return "Global context summary unavailable."
+
+
+async def extract_holdings_from_text(text: str) -> list:
+    """
+    Extract structured stock holdings from text using Gemini 2.5 Flash.
+    Returns a list of dicts: {ticker, quantity, price, type}.
+    """
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
+        )
+        
+        # Truncate for speed/cost - usually statements have holdings in first few pages or tables
+        context = text[:15000] 
+        
+        prompt = f"""
+        Analyze the following text (likely a brokerage statement or financial doc) and extract any stock/asset holdings.
+        Return ONLY a JSON array of objects with these keys: "ticker" (str), "quantity" (float), "price" (float, optional), "asset_name" (str).
+        If no holdings are found, return empty array [].
+        Do not include markdown formatting like ```json.
+        
+        Text:
+        {context}
+        """
+        
+        response = await llm.ainvoke(prompt)
+        import json
+        
+        # Clean response (remove markdown if present)
+        content = response.content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.endswith("```"):
+            content = content[:-3]
+            
+        data = json.loads(content)
+        return data if isinstance(data, list) else []
+        
+    except Exception as e:
+        print(f"Extraction Error: {e}")
+        return []
 
 
 async def process_pdf(file_path: str):
@@ -285,7 +326,22 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
         # 2. PII Cleaning
         clean_text = remove_pii(full_text)
 
-        # 3. Global Summary
+        # 3. [NEW] Extraction Hook (Human-in-the-Loop)
+        try:
+            extracted_holdings = await extract_holdings_from_text(clean_text)
+            if extracted_holdings:
+                print(f"Extraction Hook Found {len(extracted_holdings)} items: {extracted_holdings}")
+                
+                # Local Store Save (User Requested)
+                from .local_store import save_holding
+                for item in extracted_holdings:
+                    item["source_doc"] = filename
+                    save_holding(item)
+                    
+        except Exception as e:
+            print(f"Extraction Hook Failed: {e}")
+
+        # 4. Global Summary
         summary = await generate_summary(clean_text)
 
         # 4. Contextual Chunking

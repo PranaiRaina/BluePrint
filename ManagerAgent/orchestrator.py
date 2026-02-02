@@ -99,7 +99,7 @@ INSTRUCTIONS:
 
     try:
         response = await acompletion(
-            model="gemini/gemini-2.0-flash",
+            model="gemini/gemini-2.5-flash",
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content
@@ -140,7 +140,7 @@ INSTRUCTIONS:
 """
     try:
         stream = await acompletion(
-            model="gemini/gemini-2.0-flash",
+            model="gemini/gemini-2.5-flash",
             messages=[{"role": "user", "content": prompt}],
             stream=True,
         )

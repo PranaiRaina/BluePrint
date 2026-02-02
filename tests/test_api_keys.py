@@ -81,15 +81,15 @@ def test_google():
         return
 
     # Use standard endpoint for simple key check if 2.0-flash is restricted,
-    # but let's try 1.5-flash which is generally available if 2.0 fails
+    # but let's try 2.5-flash which is generally available
     # or just use the discovery URL style
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": "Hello"}]}]}
 
     try:
         response = requests.post(url, json=payload)
         if response.status_code == 200:
-            print("✅ Google Gemini Working (1.5-flash raw)")
+            print("✅ Google Gemini Working (2.5-flash raw)")
         else:
             print(
                 f"⚠️ Google GenAI Error: {response.status_code}. Trying OpenAI Compat..."
@@ -101,7 +101,7 @@ def test_google():
                 "Content-Type": "application/json",
             }
             payload_compat = {
-                "model": "gemini-2.0-flash",
+                "model": "gemini-2.5-flash",
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 10,
             }
@@ -109,7 +109,7 @@ def test_google():
                 url_compat, json=payload_compat, headers=headers
             )
             if resp_compat.status_code == 200:
-                print("✅ Google Gemini Working (2.0-flash OpenAI Compat)")
+                print("✅ Google Gemini Working (2.5-flash OpenAI Compat)")
             else:
                 print(
                     f"❌ Google GenAI Error: {resp_compat.status_code} {resp_compat.text}"

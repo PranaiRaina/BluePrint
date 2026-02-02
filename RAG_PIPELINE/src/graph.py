@@ -26,9 +26,9 @@ def get_llm():
     if not settings.GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY is not set.")
 
-    # Using gemini-2.0-flash for high speed and reasoning
+    # Using gemini-2.5-flash for high speed and reasoning
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash", google_api_key=settings.GOOGLE_API_KEY
+        model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
     )
 
 

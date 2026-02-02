@@ -5,8 +5,8 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 interface NavbarProps {
-    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks';
-    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => void;
+    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile';
+    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile') => void;
     session: Session | null;
 }
 
@@ -108,6 +108,16 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
                                     <span className="text-sm text-white truncate">{session?.user.email ?? 'User'}</span>
                                 </div>
                             </div>
+
+                            {/* NEW: Profile Button */}
+                            <button
+                                onClick={() => { setActiveTab('profile'); setUserMenuOpen(false); }}
+                                className="w-full px-3 py-3 text-left hover:bg-white/5 transition-colors flex items-center gap-2 text-slate-300"
+                            >
+                                <User className="w-4 h-4" />
+                                <span className="text-sm">My Profile</span>
+                            </button>
+
                             <button
                                 onClick={handleSignOut}
                                 className="w-full px-3 py-3 text-left hover:bg-red-500/10 transition-colors flex items-center gap-2 text-red-400"

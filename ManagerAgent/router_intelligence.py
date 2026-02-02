@@ -39,7 +39,7 @@ async def classify_intent(query: str) -> RouterDecision:
     """
     try:
         response = completion(
-            model="gemini/gemini-2.0-flash",
+            model="gemini/gemini-2.5-flash",
             messages=[
                 {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
                 {"role": "user", "content": query},

@@ -76,7 +76,7 @@ class LLMPlanner:
 
         try:
             response = await self.client.chat.completions.create(
-                model="gemini-2.0-flash",  # Use same model as other services
+                model="gemini-2.5-flash",  # Use same model as other services
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_query},
@@ -317,7 +317,7 @@ class AgentEngine:
 
         try:
             response = await llm_service.client.chat.completions.create(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg},
@@ -400,7 +400,7 @@ class AgentEngine:
 
         try:
             stream = await llm_service.client.chat.completions.create(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg},

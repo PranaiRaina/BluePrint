@@ -29,6 +29,6 @@ set_tracing_disabled(True)
 # Model configuration
 # We use OpenAIChatCompletionsModel to pass the specific Gemini model name cleanly
 MODEL = OpenAIChatCompletionsModel(
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     openai_client=gemini_client,
 )

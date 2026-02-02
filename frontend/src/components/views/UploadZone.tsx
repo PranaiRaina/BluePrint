@@ -150,7 +150,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ session }) => {
                         {uploadedFiles.map((fname, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/5">
                                 <FileText className="w-5 h-5 text-ai" />
-                                <span className="text-slate-200 text-sm">{fname}</span>
+                                <span className="text-slate-200 text-sm flex-1 truncate min-w-0" title={fname}>{fname}</span>
                                 <span className="ml-auto text-xs text-primary bg-primary/10 px-2 py-1 rounded">Ready</span>
                                 <button
                                     onClick={() => handleDelete(fname)}

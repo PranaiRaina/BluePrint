@@ -171,7 +171,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                                         {!isCollapsed && (
                                             <>
-                                                <span className="truncate flex-1">{session.title || "Untitled Chat"}</span>
+                                                <span className="truncate flex-1 min-w-0 pr-6">{session.title || "Untitled Chat"}</span>
                                                 {/* Delete Action (Hover only) */}
                                                 <div
                                                     role="button"

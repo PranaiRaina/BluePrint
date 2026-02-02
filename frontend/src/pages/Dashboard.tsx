@@ -8,6 +8,7 @@ import Navbar from '../components/layout/Navbar';
 import Sidebar, { type ChatSession } from '../components/layout/Sidebar';
 import UploadZone from '../components/views/UploadZone';
 import ChatView from '../components/views/ChatView';
+import UserProfileView from '../components/views/UserProfileView';
 import StockAnalyticsView from '../components/views/StockAnalyticsView';
 import Typewriter from '../components/ui/Typewriter';
 
@@ -19,7 +20,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile'>('overview');
     // Session Management
     const [currentSessionId, setCurrentSessionId] = useState<string>('new');
     const [initialChatQuery, setInitialChatQuery] = useState('');
@@ -48,6 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         }
         return [...new Set(foundTickers)];
     };
+
 
     const handleSessionSelect = (session: ChatSession) => {
         setCurrentSessionId(session.session_id);
@@ -177,7 +179,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     }, [extractedTickers, currentSessionId, session]);
 
 
-    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks') => {
+    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile') => {
         if (tab === 'overview') {
             // If we have an active session, Home tab should just show it
             if (currentSessionId !== 'new') {
@@ -198,21 +200,23 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
             <div className="pt-16 h-screen relative overflow-hidden">
 
-                {/* Sidebar - Fixed, Overlay on Expand */}
-                <Sidebar
-                    session={session}
-                    activeSessionId={currentSessionId}
-                    onSessionSelect={handleSessionSelect}
-                    onNewChat={handleNewChat}
-                    refreshTrigger={refreshSidebar}
-                    className="fixed left-0 top-16 bottom-0 z-50 hidden md:flex shrink-0 border-r border-white/10 bg-black/80 backdrop-blur-xl"
-                    isCollapsed={isSidebarCollapsed}
-                    onToggle={() => { setIsSidebarCollapsed(!isSidebarCollapsed); }}
-                />
+                {/* Sidebar - Fixed, Overlay on Expand (Hidden on Profile) */}
+                {activeTab !== 'profile' && (
+                    <Sidebar
+                        session={session}
+                        activeSessionId={currentSessionId}
+                        onSessionSelect={handleSessionSelect}
+                        onNewChat={handleNewChat}
+                        refreshTrigger={refreshSidebar}
+                        className="fixed left-0 top-16 bottom-0 z-50 hidden md:flex shrink-0 border-r border-white/10 bg-black/80 backdrop-blur-xl"
+                        isCollapsed={isSidebarCollapsed}
+                        onToggle={() => { setIsSidebarCollapsed(!isSidebarCollapsed); }}
+                    />
+                )}
 
                 <motion.div
                     className={`w-full h-full relative z-10 flex flex-col items-center pl-0 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-                    animate={{ paddingLeft: isSidebarCollapsed ? 64 : 260 }}
+                    animate={{ paddingLeft: activeTab === 'profile' ? 0 : (isSidebarCollapsed ? 64 : 260) }}
                     transition={{ duration: 0.15, ease: "linear" }}
                 >
                     <AnimatePresence>
@@ -333,6 +337,10 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             For now, keeping it here. 
                          */}
                         {activeTab === 'vault' && <UploadZone session={session} />}
+                    </div>
+
+                    <div className={`w-full h-full ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
+                        {activeTab === 'profile' && <UserProfileView session={session} />}
                     </div>
 
                     {/* Keep StockAnalyticsView mounted to preserve chart state/data */}

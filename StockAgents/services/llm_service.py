@@ -16,7 +16,7 @@ class LLMService:
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=settings.GOOGLE_API_KEY,
         )
-        self.model = "gemini-2.0-flash"  # High performance model
+        self.model = "gemini-2.5-flash"  # High performance model
 
     async def analyze_context(self, query: str, context_data: dict) -> str:
         """

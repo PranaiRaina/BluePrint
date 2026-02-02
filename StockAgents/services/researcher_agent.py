@@ -22,7 +22,7 @@ executor = ThreadPoolExecutor(max_workers=3)
 class ResearcherAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="Researcher", client=llm_service.client)
-        self.model = "gemini-2.0-flash"
+        self.model = "gemini-2.5-flash"
 
     async def run(self, query: str) -> Dict[str, Any]:
         """
