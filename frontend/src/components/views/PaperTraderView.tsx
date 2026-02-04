@@ -139,7 +139,10 @@ const PaperTraderView: React.FC<PaperTraderViewProps> = ({ session }) => {
                                 setSimulationProgress(pct);
                                 // Optional: Stream equity curve updates here if we want log updates
                             } else if (event.type === 'result') {
-                                setBacktestResult(event.data);
+                                // Backend returns a list of results (one per trader).
+                                // For now, we display the first one to avoid crashing.
+                                const resultPayload = Array.isArray(event.data) ? event.data[0] : event.data;
+                                setBacktestResult(resultPayload);
                             } else if (event.type === 'error') {
                                 alert("Simulation Error: " + event.message);
                             }
@@ -548,7 +551,7 @@ const PaperTraderView: React.FC<PaperTraderViewProps> = ({ session }) => {
                                                 />
                                                 <Line
                                                     type="monotone"
-                                                    dataKey="value"
+                                                    dataKey="equity"
                                                     stroke="#10b981"
                                                     strokeWidth={2}
                                                     dot={false}
@@ -566,7 +569,10 @@ const PaperTraderView: React.FC<PaperTraderViewProps> = ({ session }) => {
                                                 <div key={i} className="py-3 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 rounded-lg transition-colors">
                                                     <div className="flex items-center justify-between text-sm mb-1">
                                                         <div className="flex items-center gap-3">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tx.action === 'BUY' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tx.action === 'BUY' ? 'bg-green-500/10 text-green-400' :
+                                                                    tx.action === 'SELL' ? 'bg-red-500/10 text-red-400' :
+                                                                        'bg-yellow-500/10 text-yellow-400'
+                                                                }`}>
                                                                 {tx.action}
                                                             </span>
                                                             <span className="text-white font-mono text-xs">{tx.time}</span>

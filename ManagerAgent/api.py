@@ -1,4 +1,9 @@
 import os
+from dotenv import load_dotenv
+
+# Load env vars before any other imports that might use them
+load_dotenv()
+
 import uuid
 import json
 import asyncio
@@ -22,11 +27,8 @@ from CalcAgent.src.utils import run_with_retry
 from CalcAgent.src.agent import financial_agent, general_agent
 from Auth.dependencies import get_current_user
 
-from dotenv import load_dotenv
+# Env vars loaded at top of file
 from PaperTrader.router import router as paper_trader_router
-
-# Load env vars before app/client init
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -282,7 +284,7 @@ async def run_backtest(request: dict):
             # To do this properly without blocking other requests, we should wrap it.
             # But for this hackathon context, direct iteration is acceptable if single user.
             
-            for event in engine.stream_llm_simulation(ticker, days=days, interval="1d"):
+            async for event in engine.stream_llm_simulation(ticker, days=days, interval="1d"):
                 yield f"data: {json.dumps(event)}\n\n"
                 await asyncio.sleep(0) # Yield control to event loop
 
