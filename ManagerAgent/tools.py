@@ -4,7 +4,7 @@ import os
 
 
 async def perform_rag_search(
-    query: str, user_id: str = "fallback-user-id", session_id: str = "default"
+    query: str, user_id: str = "fallback-user-id", session_id: str = "default", history: str = ""
 ) -> str:
     """
     Search connected documents for answers using the RAG pipeline.
@@ -21,7 +21,7 @@ async def perform_rag_search(
         # Invoke the LangGraph pipeline
         # Pass the session_id as the thread_id for persistence
         result = await app_graph.ainvoke(
-            {"question": query, "user_id": user_id},
+            {"question": query, "user_id": user_id, "history": history},
             config={"configurable": {"thread_id": session_id}},
         )
 
@@ -36,7 +36,7 @@ async def perform_rag_search(
 
 
 async def perform_rag_search_stream(
-    query: str, user_id: str = "fallback-user-id", session_id: str = "default"
+    query: str, user_id: str = "fallback-user-id", session_id: str = "default", history: str = ""
 ):
     """
     Streamed version of perform_rag_search.
@@ -48,7 +48,7 @@ async def perform_rag_search_stream(
         # Use astream_events to capture the LLM output from the 'generate' node
         # Pass the session_id as the thread_id for persistence
         async for event in app_graph.astream_events(
-            {"question": query, "user_id": user_id},
+            {"question": query, "user_id": user_id, "history": history},
             config={"configurable": {"thread_id": session_id}},
             version="v2"
         ):

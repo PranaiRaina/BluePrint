@@ -43,40 +43,10 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
 
 
 
-    useEffect(() => {
-        let isStale = false;
-        const loadHistory = async () => {
-            if (!session?.user?.id || !sessionId) return;
+    const prevSessionIdRef = useRef<string | null>(sessionId);
+    const hasSentInitial = useRef(false);
 
-            // Reset messages only if truly necessary (e.g. initial render or genuine switch)
-            setMessages([]);
-            setIsHistoryLoading(true);
 
-            try {
-                const history = await agentService.getHistory(sessionId, session);
-
-                if (isStale) return;
-
-                // Only load history if we don't have a pending initial auto-query.
-                // For sidebar selections, initialQuery will be empty ('').
-                if (!initialQuery) {
-                    setMessages(history);
-                }
-            } catch (e) {
-                console.error("Failed to load history", e);
-            } finally {
-                if (!isStale) {
-                    setIsHistoryLoading(false);
-                }
-            }
-        };
-
-        void loadHistory();
-
-        return () => {
-            isStale = true;
-        };
-    }, [sessionId, initialQuery, session]);
 
     const processQuery = React.useCallback(async (text: string) => {
         if (!text.trim()) return;
@@ -158,19 +128,58 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         }
     };
 
-    // Auto-Send Initial Query
-    const hasSentInitial = React.useRef(false);
     useEffect(() => {
-        if (!initialQuery) {
-            hasSentInitial.current = false;
-            return;
-        }
+        let isStale = false;
 
-        if (initialQuery && !hasSentInitial.current) {
-            hasSentInitial.current = true;
-            void processQuery(initialQuery);
-        }
-    }, [initialQuery, processQuery]);
+        const initializeChat = async () => {
+            if (!session?.user?.id || !sessionId) return;
+
+            // 1. Only clear and reload if the sessionId has actually changed
+            if (prevSessionIdRef.current !== sessionId) {
+                setMessages([]);
+                prevSessionIdRef.current = sessionId;
+                // If we have an initial query, we'll see its progress soon, so maybe skip big loader
+                if (!initialQuery) {
+                    setIsHistoryLoading(true);
+                }
+            } else if (messages.length === 0 && !initialQuery) {
+                // If same session but empty state, show loader
+                setIsHistoryLoading(true);
+            }
+
+            try {
+                // Fetch history
+                const history = await agentService.getHistory(sessionId, session);
+                if (isStale) return;
+
+                // Load history but preserve anything already in messages (from processQuery)
+                setMessages(prev => {
+                    if (prev.length === 0) return history;
+                    return prev;
+                });
+            } catch (e) {
+                console.error("Failed to load history", e);
+            } finally {
+                if (!isStale) {
+                    setIsHistoryLoading(false);
+                }
+            }
+
+            // 2. Handle Initial Query Auto-Pulse
+            if (initialQuery && !hasSentInitial.current) {
+                hasSentInitial.current = true;
+                void processQuery(initialQuery);
+            }
+        };
+
+        void initializeChat();
+
+        return () => {
+            isStale = true;
+        };
+    }, [sessionId, session, initialQuery, processQuery]);
+
+    // Initial pulse handled in unified effect above
 
     return (
         <div className="w-full h-full pt-4 pb-4 px-4 flex flex-col max-w-5xl mx-auto">
@@ -188,13 +197,20 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                {isHistoryLoading && (
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative">
+                {isHistoryLoading && messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                     </div>
                 )}
-                {!isHistoryLoading && messages.map((msg, i) => (
+
+                {isHistoryLoading && messages.length > 0 && (
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-[10px] text-white/50 animate-pulse">
+                        Refreshing...
+                    </div>
+                )}
+
+                {messages.map((msg, i) => (
                     <motion.div
                         key={i}
                         initial={{ opacity: 0, scale: 0.95 }}

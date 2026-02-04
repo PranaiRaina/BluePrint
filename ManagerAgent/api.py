@@ -6,6 +6,7 @@ from typing import Optional, List
 from CalcAgent.src.utils import run_with_retry
 import asyncio
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 
 # Import GeneralAgent for fallback
 from CalcAgent.src.agent import financial_agent, general_agent
@@ -22,7 +23,35 @@ from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from fastapi import UploadFile, File
 
-app = FastAPI(title="Financial Calculation Agent API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Open the LangGraph checkpointer pool
+    try:
+        from RAG_PIPELINE.src.graph import rag_pool, checkpointer
+        if rag_pool:
+            print("Opening LangGraph AsyncPostgresPool...")
+            await rag_pool.open()
+            if checkpointer:
+                print("Setting up LangGraph checkpointer tables...")
+                await checkpointer.setup()
+    except Exception as e:
+        print(f"Lifespan Startup Error (RAG Pool): {e}")
+        
+    yield
+    
+    # Shutdown: Close the pool
+    try:
+        from RAG_PIPELINE.src.graph import rag_pool
+        if rag_pool:
+            print("Closing LangGraph AsyncPostgresPool...")
+            await rag_pool.close()
+    except Exception as e:
+        print(f"Lifespan Shutdown Error: {e}")
+
+app = FastAPI(
+    title="Financial Calculation Agent API",
+    lifespan=lifespan
+)
 
 # --- Security & Precautions ---
 
@@ -402,11 +431,16 @@ async def chat_stream(request: Request, body: AgentRequest):
                 yield f"data: {json.dumps({'type': 'status', 'content': 'Initializing new session...'})}\n\n"
 
             # 1. Retrieve History
+            import time
+            hist_start = time.perf_counter()
             history = get_chat_history(user_id, actual_session_id)
+            print(f"DEBUG [PERF]: get_chat_history took {(time.perf_counter() - hist_start) * 1000:.2f}ms")
 
             # 2. Analyze Intent
             yield f"data: {json.dumps({'type': 'status', 'content': 'Analyzing intent...'})}\n\n"
+            intent_start = time.perf_counter()
             decision = await classify_intent(body.query)
+            print(f"DEBUG [PERF]: classify_intent took {(time.perf_counter() - intent_start) * 1000:.2f}ms")
 
             # Emit extracted tickers early
             if decision.extracted_tickers:
@@ -432,7 +466,7 @@ async def chat_stream(request: Request, body: AgentRequest):
 
                     yield {"type": "status", "content": "Searching documents..."}
                     async for chunk in perform_rag_search_stream(
-                        body.query, user_id, body.session_id
+                        body.query, user_id, body.session_id, history=history
                     ):
                         yield chunk
 
@@ -462,23 +496,36 @@ async def chat_stream(request: Request, body: AgentRequest):
 
             # Execute and yield
             full_response_buffer = []
+            history_saved = False
 
-            async for chunk in run_stream():
-                # Yield to client (SSE format) IMMEDIATELY
-                yield f"data: {json.dumps(chunk)}\n\n"
-                # Force return to event loop to allow write to socket
-                await asyncio.sleep(0)
+            try:
+                async for chunk in run_stream():
+                    # Yield to client (SSE format) IMMEDIATELY
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                    # Force return to event loop to allow write to socket
+                    await asyncio.sleep(0)
 
-                # Buffer tokens for history
-                if chunk["type"] == "token":
-                    content = chunk["content"]
-                    full_response_buffer.append(content)
+                    # Buffer tokens for history
+                    if chunk["type"] == "token":
+                        content = chunk["content"]
+                        full_response_buffer.append(content)
+                
+                # Normal completion save
+                final_text = "".join(full_response_buffer)
+                if final_text:
+                    save_chat_pair(user_id, actual_session_id, body.query, final_text)
+                    history_saved = True
+                    
+            except GeneratorExit:
+                # Client disconnected but we may have content to save
+                final_text = "".join(full_response_buffer)
+                if final_text and not history_saved:
+                    print(f"DEBUG: Saving partial/full response on client disconnect for session {actual_session_id}")
+                    save_chat_pair(user_id, actual_session_id, body.query, final_text)
+                    history_saved = True
+                raise
 
-            # 4. Save History (After stream completes - Atomic Pair)
-            final_text = "".join(full_response_buffer)
-            save_chat_pair(user_id, actual_session_id, body.query, final_text)
-
-            # End of stream
+            # End of stream status
             yield f"data: {json.dumps({'type': 'end', 'content': ''})}\n\n"
 
         except Exception as e:
@@ -605,8 +652,12 @@ async def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     Get chat history for a specific session.
     """
+    import time
+    start = time.perf_counter()
     user_id = user["sub"]
-    return get_chat_history_json(user_id, session_id)
+    history = get_chat_history_json(user_id, session_id)
+    print(f"DEBUG [PERF]: get_chat_history_json for {session_id} took {(time.perf_counter() - start) * 1000:.2f}ms")
+    return history
 
 
 @app.get("/v1/agent/articles/{ticker}")

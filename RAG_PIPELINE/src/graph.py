@@ -16,6 +16,7 @@ class GraphState(TypedDict):
     generation: str
     documents: List[Document]
     user_id: str
+    history: str # Added history for rephrasing
 
 
 # --- Initialization ---
@@ -40,6 +41,34 @@ if settings.TAVILY_API_KEY:
     web_search_tool = TavilySearch(max_results=3, tavily_api_key=settings.TAVILY_API_KEY)
 
 # --- Nodes ---
+
+def rephrase_query(state: GraphState):
+    """
+    Rephrase the user question based on chat history to produce a standalone question.
+    """
+    question = state["question"]
+    history = state.get("history", "")
+
+    if not history:
+        return {"question": question}
+
+    print(f"DEBUG [RAG]: Rephrasing query with history context...")
+    
+    system = """You are a query rephraser for a financial RAG system. 
+    Given a chat history and a follow-up user question, rephrase the question to be a standalone search query.
+    If the question is already standalone, return it as is.
+    Maintain the core intent and specific mentions (tickers, dates, etc.)."""
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system),
+        ("human", "Chat History:\n{history}\n\nFollow-up question: {question}")
+    ])
+    rephrase_chain = prompt | llm | StrOutputParser()
+    
+    standalone_query = rephrase_chain.invoke({"history": history, "question": question})
+    print(f"DEBUG [RAG]: Rephrased '{question}' -> '{standalone_query}'")
+    
+    return {"question": standalone_query}
 
 
 def retrieve(state: GraphState):
@@ -66,6 +95,7 @@ def retrieve(state: GraphState):
     from .ingestion import perform_similarity_search
     
     # Run Search
+    print(f"DEBUG [RAG]: Retrieving for user_id: {user_id}, query: {question}")
     results = perform_similarity_search(
         query=question,
         user_id=user_id,
@@ -74,10 +104,35 @@ def retrieve(state: GraphState):
     )
     
     # Process Results
+    print(f"DEBUG [RAG]: Found {len(results)} raw results.")
     for doc, score in results:
         # Avoid duplicates based on content
         if not any(d.page_content == doc.page_content for d in documents):
             documents.append(doc)
+            print(f"DEBUG [RAG]: Retrieved Doc from {doc.metadata.get('source')} (Score: {score:.4f})")
+
+    # --- [NEW] Verified Holdings Injection ---
+    try:
+        from .local_store import load_holdings
+        verified_holdings = [h for h in load_holdings() if h.get("status") == "verified"]
+        
+        if verified_holdings:
+            print(f"DEBUG [RAG]: Checking {len(verified_holdings)} verified holdings for relevance...")
+            # Simple ticker match or keyword match
+            relevant_holdings = []
+            for h in verified_holdings:
+                ticker = h.get("ticker", "").upper()
+                name = h.get("asset_name", "").lower()
+                if ticker in question.upper() or (name and name in question.lower()) or "holding" in question.lower() or "own" in question.lower():
+                    relevant_holdings.append(h)
+            
+            if relevant_holdings:
+                print(f"DEBUG [RAG]: Injecting {len(relevant_holdings)} verified holdings into context.")
+                for h in relevant_holdings:
+                    content = f"VERIFIED HOLDING: {h.get('asset_name')} ({h.get('ticker')}). Quantity: {h.get('quantity')}. Price: {h.get('price')}."
+                    documents.append(Document(page_content=content, metadata={"source": "Verified Portfolio", "type": "holdings"}))
+    except Exception as e:
+        print(f"DEBUG [RAG]: Failed to inject holdings: {e}")
 
     return {"documents": documents, "question": question, "user_id": user_id}
 
@@ -122,17 +177,21 @@ def grade_documents(state: GraphState):
     filtered_docs = []
     has_relevant = False
 
+    print(f"DEBUG [RAG]: Grading {len(documents)} documents...")
     for doc in documents:
         score = grader_chain.invoke(
             {"question": question, "document": doc.page_content}
         )
+        print(f"DEBUG [RAG]: Doc from {doc.metadata.get('source')} Grade: {score}")
         if "yes" in score.lower():
             filtered_docs.append(doc)
             has_relevant = True
 
     if not has_relevant:
+        print("DEBUG [RAG]: No relevant documents found after grading.")
         return {"documents": [], "question": question}
 
+    print(f"DEBUG [RAG]: {len(filtered_docs)} documents passed grading.")
     return {"documents": filtered_docs, "question": question}
 
 
@@ -190,6 +249,7 @@ def generate(state: GraphState):
 
     # Format context
     context = "\n\n".join([doc.page_content for doc in documents])
+    print(f"DEBUG [RAG]: Generating answer with {len(documents)} docs. Context length: {len(context)}")
 
     # Prompt
     template = """You are a helpful financial assistant. Answer the user's question based on the following context from their documents.
@@ -200,15 +260,13 @@ Context:
 Question: {question}
 
 Instructions:
+- Use the provided context to answer the question as accurately as possible.
+- If the context contains specific dates, prices, or quantities, include them in your answer.
 - Provide a complete, conversational response in full sentences.
-- DO NOT give one-word or number-only answers. Always explain the answer in context.
-- For example, instead of just "10", say "Based on your document, you have 10 shares of Apple stock."
-- If the context contains the answer, provide it clearly with relevant details.
-- If the context comes from a "Global Summary" of a PDF, you can reference "your document" or "your uploaded file".
-- If the context comes from "Web search", mention that you fetched this information online.
-- DO NOT add disclaimers when simply presenting factual information from the user's documents.
-- Only add a disclaimer if the user is asking for investment advice or recommendations.
-- Only say "I couldn't find that information in your documents" if the context is completely irrelevant.
+- DO NOT say "I don't have access to your data" if context is provided above. 
+- You ARE allowed to see the user's private data for the purpose of answering this question.
+- Reference "your document" or "your uploaded statement" when presenting info from the context.
+- If the answer is not in the context at all, only then explain that you couldn't find specific details for that query.
 """
 
     prompt = ChatPromptTemplate.from_template(template)
@@ -237,13 +295,15 @@ def decide_to_generate(state: GraphState):
 workflow = StateGraph(GraphState)
 
 # Define nodes
+workflow.add_node("rephrase", rephrase_query)
 workflow.add_node("retrieve", retrieve)
 workflow.add_node("grade_documents", grade_documents)
 workflow.add_node("web_search", web_search)
 workflow.add_node("generate", generate)
 
 # Build graph
-workflow.set_entry_point("retrieve")
+workflow.set_entry_point("rephrase")
+workflow.add_edge("rephrase", "retrieve")
 workflow.add_edge("retrieve", "grade_documents")
 
 workflow.add_conditional_edges(
@@ -259,6 +319,8 @@ workflow.add_edge("generate", END)
 
 # --- Checkpointer Initialization ---
 checkpointer = None
+rag_pool = None
+
 if settings.SUPABASE_DB_URL:
     try:
         # Create a connection pool for LangGraph checkpointers
@@ -268,13 +330,13 @@ if settings.SUPABASE_DB_URL:
         }
         # Use AsyncConnectionPool for ainvoke compatibility
         # We Initialize with open=False so it doesn't fail at module import time (no loop)
-        pool = AsyncConnectionPool(
+        rag_pool = AsyncConnectionPool(
             conninfo=settings.SUPABASE_DB_URL,
             max_size=10,
             kwargs=connection_kwargs,
             open=False # Defer connection opening
         )
-        checkpointer = AsyncPostgresSaver(pool)
+        checkpointer = AsyncPostgresSaver(rag_pool)
         
         print("LangGraph AsyncPostgresSaver initialized (Pool deferred).")
     except Exception as e:

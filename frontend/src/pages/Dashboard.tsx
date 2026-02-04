@@ -64,9 +64,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
 
     const handleSessionSelect = (session: ChatSession) => {
+        const isNewSession = session.session_id !== currentSessionId;
+
         setCurrentSessionId(session.session_id);
         setInitialChatQuery('');
-        setChatKey(prev => prev + 1);
+
+        if (isNewSession) {
+            setChatKey(prev => prev + 1);
+        }
 
         // Always switch to chat tab when a session is selected
         if (activeTab !== 'chat') {
@@ -131,12 +136,12 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             });
             setInitialChatQuery(query);
             setActiveTab('chat');
-            setLoadingStage(0); 
-            setQuery(''); 
+            setLoadingStage(0);
+            setQuery('');
 
         } catch (error) {
             console.error(error);
-            setLoadingStage(0); 
+            setLoadingStage(0);
             alert("Agent failed to respond. Is the backend running on port 8001?");
         }
     };

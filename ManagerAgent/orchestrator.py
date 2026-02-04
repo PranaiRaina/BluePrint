@@ -184,7 +184,7 @@ async def orchestrate(
 
     for intent in intents:
         if intent == IntentType.RAG:
-            result = await perform_rag_search(query, user_id=user_id)
+            result = await perform_rag_search(query, user_id=user_id, history=history)
             context["results"]["rag"] = result
 
         elif intent == IntentType.STOCK:
@@ -246,7 +246,7 @@ async def orchestrate_stream(
                 from ManagerAgent.tools import perform_rag_search_stream
 
                 full_rag_response = []
-                async for chunk in perform_rag_search_stream(query, user_id=user_id):
+                async for chunk in perform_rag_search_stream(query, user_id=user_id, history=history):
                     if chunk["type"] == "status":
                         yield chunk
                     elif chunk["type"] == "token":
