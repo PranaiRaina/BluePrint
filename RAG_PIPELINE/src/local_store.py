@@ -21,10 +21,14 @@ def load_holdings() -> List[Dict[str, Any]]:
 
 def save_holding(holding: Dict[str, Any]):
     holdings = load_holdings()
-    # Add ID and Status
-    holding["id"] = f"temp_{len(holdings) + 1}"
-    holding["status"] = "pending"
-    holding["timestamp"] = "2024-02-01T20:00:00Z" # Mock timestamp or use datetime.now
+    # Add ID and Status if missing
+    if "id" not in holding:
+        holding["id"] = f"temp_{len(holdings) + 1}"
+    if "status" not in holding:
+        holding["status"] = "pending"
+    if "timestamp" not in holding:
+        from datetime import datetime
+        holding["timestamp"] = datetime.now().isoformat()
     
     holdings.append(holding)
     
@@ -44,6 +48,13 @@ def update_holding_status(holding_id: str, new_status: str):
         with open(STORE_FILE, "w") as f:
             json.dump(holdings, f, indent=2)
     return updated
+
+
+def save_all_holdings(holdings: List[Dict[str, Any]]):
+    """Overwrite entire holdings file (used for delete operations)."""
+    with open(STORE_FILE, "w") as f:
+        json.dump(holdings, f, indent=2)
+
 
 def clear_store():
     with open(STORE_FILE, "w") as f:

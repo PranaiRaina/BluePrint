@@ -108,7 +108,8 @@ LLM_ANALYSIS_PROMPT = (
     "data-driven insights based on the provided market data. "
     "Format your response as a direct answer to the user. "
     "Do not provide financial advice, but provide technical and fundamental analysis based on the data. "
-    "If the data is missing, state that clearly."
+    "If the data is missing, state that clearly. "
+    "Append `<<LEGAL_DISCLAIMER>>` at the end of your response."
 )
 
 DATA_EXTRACTION_PROMPT = (

@@ -20,6 +20,21 @@ class FinnhubClient:
                 return resp.json()
             return {}
 
+    async def get_company_profile(self, symbol: str) -> Dict:
+        """Get company profile data (name, logo, industry)."""
+        if not self.api_key:
+            return {}
+
+        params = {"symbol": symbol, "token": self.api_key}
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(f"{self.base_url}/stock/profile2", params=params)
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception as e:
+                print(f"Error fetching profile for {symbol}: {e}")
+            return {}
+
     async def filter_market_movers(
         self, symbols: List[str], min_change_percent: float = 0
     ) -> List[Dict]:

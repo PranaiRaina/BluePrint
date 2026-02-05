@@ -43,11 +43,11 @@ Results:
    - Then "Data Sources" line.
    - Finally, the "Disclaimer" line.
 6. **Data Sources**: You MUST list the sources used (e.g. "Finnhub", "Wolfram", "Tavily").
-7. **Disclaimer**: You MUST use the exact text provided below. Do NOT add your own "I cannot provide advice" warnings.
+7. **Legal Verification**: Append `<<LEGAL_DISCLAIMER>>` at the end ONLY if the response contains specific investment recommendations (Buy/Sell/Hold) or forward-looking financial projections. Do NOT append it for simple factual summaries, data extractions, or history lookups.
 
 Data Sources: [List Sources Here]
 
-*{settings.DISCLAIMER_TEXT}*
+<<LEGAL_DISCLAIMER>>
 """
 
 ROUTER_SYSTEM_PROMPT = """You are a Semantic Intent Classifier for the "BluePrint" Financial System.

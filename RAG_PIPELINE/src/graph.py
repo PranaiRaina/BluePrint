@@ -267,6 +267,7 @@ Instructions:
 - You ARE allowed to see the user's private data for the purpose of answering this question.
 - Reference "your document" or "your uploaded statement" when presenting info from the context.
 - If the answer is not in the context at all, only then explain that you couldn't find specific details for that query.
+- Append `<<LEGAL_DISCLAIMER>>` ONLY if the response contains specific investment recommendations or forward-looking projections. Do NOT append for factual document summaries.
 """
 
     prompt = ChatPromptTemplate.from_template(template)

@@ -15,8 +15,18 @@ export interface ChatSession {
     metadata?: string;
 }
 
+export interface StockMetrics {
+    dividendYield?: number;
+    beta?: number;
+    peRatio?: number;
+    marketCapitalization?: number;
+    [key: string]: unknown;
+}
+
 export interface StockData {
     ticker: string;
+    name?: string;
+    metrics?: StockMetrics;
     currentPrice: number;
     change: number;
     changePercent: number;
@@ -31,6 +41,7 @@ export interface Message {
     role: 'user' | 'ai';
     content: string;
     timestamp?: string;
+    hasDisclaimer?: boolean;
 }
 
 type StreamEvent =
@@ -233,7 +244,7 @@ export const agentService = {
      * @param ticker Stock ticker symbol (e.g., "NVDA").
      * @param session Supabase session for authentication token.
      */
-    getStockData: async (ticker: string, session: Session | null, timeRange = "3m"): Promise<StockData> => {
+    getStockData: async (ticker: string, session: Session | null, timeRange = "3m", startDate?: string): Promise<StockData> => {
         try {
             const token = session?.access_token;
             const headers: HeadersInit = {};
@@ -241,7 +252,12 @@ export const agentService = {
                 headers.Authorization = `Bearer ${token}`;
             }
 
-            const response = await fetch(`${API_Base}/v1/agent/stock/${ticker.toUpperCase()}?time_range=${timeRange}`, {
+            let url = `${API_Base}/v1/agent/stock/${ticker.toUpperCase()}?time_range=${timeRange}`;
+            if (startDate) {
+                url += `&start_date=${startDate}`;
+            }
+
+            const response = await fetch(url, {
                 method: 'GET',
                 headers
             });

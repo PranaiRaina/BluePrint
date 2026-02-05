@@ -298,6 +298,14 @@ class UpdateSessionRequest(BaseModel):
     metadata: Optional[str] = None
 
 
+class CreateHoldingRequest(BaseModel):
+    ticker: str
+    asset_name: str
+    quantity: float
+    price: float
+    source_doc: str = "Manual Entry"
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "ManagerAgent"}
@@ -519,9 +527,11 @@ async def chat_stream(request: Request, body: AgentRequest):
             except GeneratorExit:
                 # Client disconnected but we may have content to save
                 final_text = "".join(full_response_buffer)
-                if final_text and not history_saved:
-                    print(f"DEBUG: Saving partial/full response on client disconnect for session {actual_session_id}")
-                    save_chat_pair(user_id, actual_session_id, body.query, final_text)
+                if not history_saved:
+                    # Even if no AI text, save the USER query so it doesn't vanish
+                    saved_text = final_text if final_text else "..."
+                    print(f"DEBUG: Saving response (len={len(saved_text)}) on client disconnect for session {actual_session_id}")
+                    save_chat_pair(user_id, actual_session_id, body.query, saved_text)
                     history_saved = True
                 raise
 
@@ -685,21 +695,34 @@ async def get_articles(
 
 @app.get("/v1/agent/stock/{ticker}")
 async def get_stock_data(
-    ticker: str, time_range: str = "3m", user: dict = Depends(get_current_user)
+    ticker: str, 
+    time_range: str = "3m", 
+    start_date: Optional[str] = None,
+    user: dict = Depends(get_current_user)
 ):
     """
-    Get real-time stock quote and price history for a ticker.
-    Returns data formatted for frontend charting.
+    Get real-time stock quote, price history, and company profile.
+    If start_date is provided (YYYY-MM-DD), fetches candles from that date to now.
     """
     try:
         # Import FinnhubClient
         from StockAgents.services.finnhub_client import finnhub_client
+        import asyncio
 
-        # Fetch quote and candles in parallel
-        quote = await finnhub_client.get_quote(ticker.upper())
-        candles = await finnhub_client.get_candles(
-            ticker.upper(), time_range=time_range
-        )
+        tasks = [
+            finnhub_client.get_quote(ticker.upper()),
+            finnhub_client.get_candles(ticker.upper(), time_range=time_range), # TODO: Handle specific start_date inside client if needed, or filter here. 
+            finnhub_client.get_company_profile(ticker.upper()),
+            finnhub_client.get_company_metrics(ticker.upper())
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        quote = results[0]
+        candles = results[1]
+        profile = results[2]
+        metrics = results[3]
+        company_name = profile.get("name", ticker.upper())
+
 
         # Format candles for recharts
         chart_data = []
@@ -729,10 +752,10 @@ async def get_stock_data(
                         timestamp, tz=timezone.utc
                     ).strftime("%b %d %H:%M")
                 else:
-                    # Daily: Show Date (UTC midnight)
+                    # Daily: Show YYYY-MM-DD (Match filtering logic format)
                     time_str = datetime.fromtimestamp(
                         timestamp, tz=timezone.utc
-                    ).strftime("%b %d")
+                    ).strftime("%Y-%m-%d")
 
                 chart_data.append(
                     {
@@ -744,8 +767,43 @@ async def get_stock_data(
                     }
                 )
 
+        # Filter candles if start_date is provided
+        if start_date:
+            try:
+                from datetime import datetime, timedelta
+                # Parse start_date (YYYY-MM-DD or ISO) to timestamp
+                if "T" in start_date:
+                     # Parse ISO format and normalize to midnight (start of day)
+                     dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                     start_ts = int(dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+                else:
+                     # Already YYYY-MM-DD (midnight by default)
+                     start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp())
+                # DEBUG: Trace start_date logic
+                print(f"DEBUG GRAPH: Ticker={ticker}, StartDate={start_date}, StartTS={start_ts}")
+                
+                # Filter: Include candles from the start of the buy date
+                pre_filter_len = len(chart_data)
+                filtered_data = [c for c in chart_data if int(datetime.strptime(c["time"], "%Y-%m-%d").timestamp()) >= start_ts]
+                print(f"DEBUG GRAPH: Pre-filter={pre_filter_len}, Post-filter={len(filtered_data)}")
+                
+                # If filtering removes all data (e.g. buy date is today/future) 
+                # OR if the result is too small for a graph (Recharts needs >1 point for Area), 
+                # keep at least the last 5 candles (approx 1 week) for context.
+                if len(filtered_data) < 2 and chart_data:
+                    print("DEBUG GRAPH: Filtered data too small, falling back to last 5 candles")
+                    filtered_data = chart_data[-5:] 
+                
+                chart_data = filtered_data
+                print(f"DEBUG GRAPH: Final candle count={len(chart_data)}")
+
+            except Exception as e:
+                print(f"Error filtering candles by date: {e}")
+
         return {
             "ticker": ticker.upper(),
+            "name": company_name,
+            "metrics": metrics,
             "currentPrice": quote.get("c", 0),
             "change": quote.get("d", 0),
             "changePercent": quote.get("dp", 0),
@@ -964,6 +1022,49 @@ async def get_verified_holdings(user: dict = Depends(get_current_user)):
     except Exception as e:
         print(f"Error loading verified holdings: {e}")
         return {"items": []}
+
+
+@app.post("/v1/portfolio/holdings")
+async def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_current_user)):
+    """Add a new verified holding manually."""
+    try:
+        from RAG_PIPELINE.src.local_store import save_holding
+        import uuid
+        
+        new_item = body.dict()
+        new_item["id"] = f"manual_{str(uuid.uuid4())}"
+        new_item["status"] = "verified"
+        
+        save_holding(new_item)
+        return {"status": "success", "item": new_item}
+    except Exception as e:
+        print(f"Error adding holding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/v1/portfolio/holdings/{ticker}")
+async def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
+    """Delete all holdings for a given ticker."""
+    try:
+        from RAG_PIPELINE.src.local_store import load_holdings, save_all_holdings
+        
+        items = load_holdings()
+        ticker_upper = ticker.upper()
+        
+        # Filter out all items matching this ticker
+        remaining = [i for i in items if (i.get("ticker") or "").upper() != ticker_upper]
+        deleted_count = len(items) - len(remaining)
+        
+        if deleted_count == 0:
+            raise HTTPException(status_code=404, detail=f"No holdings found for {ticker}")
+        
+        save_all_holdings(remaining)
+        return {"status": "success", "deleted": deleted_count, "ticker": ticker_upper}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting holding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

@@ -5,8 +5,9 @@ import { Send, Bot } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import LiveMessage from '../ui/LiveMessage'; // Import the new component
+import LiveMessage from '../ui/LiveMessage';
 import Typewriter from '../ui/Typewriter';
+import DisclaimerFooter from '../ui/DisclaimerFooter';
 
 interface ChatViewProps {
     session: Session;
@@ -27,9 +28,11 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
     const [isLoading, setIsLoading] = useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState("Thinking...");
+    const [hasStreamContent, setHasStreamContent] = useState(false);
 
     // Ref to hold the current streaming content without triggering re-renders
     const streamContentRef = useRef("");
+    const hasDisclaimerRef = useRef(false);
 
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -53,6 +56,8 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
 
         // Reset stream Ref
         streamContentRef.current = "";
+        hasDisclaimerRef.current = false;
+        setHasStreamContent(false);
 
         // UI Update: Add user message and empty AI placeholder
         setMessages(prev => [
@@ -75,8 +80,23 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         setLoadingStatus(status);
                     },
                     onToken: (token) => {
-                        // Update ref directly - NO RE-RENDER triggered here
+                        // 1. Append token first to catch split patterns
                         streamContentRef.current += token;
+
+                        // 2. Check and strip from the FULL content buffer
+                        // Handle potential HTML escaping and whitespace variations
+                        const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
+
+                        if (legalRegex.test(streamContentRef.current)) {
+                            hasDisclaimerRef.current = true;
+                            // Replace in the buffer
+                            streamContentRef.current = streamContentRef.current.replace(legalRegex, "");
+                        }
+
+                        // Update UI state
+                        if (streamContentRef.current && !hasStreamContent) {
+                            setHasStreamContent(true);
+                        }
                     },
                     onTickers: (tickers) => {
                         if (onTickers) onTickers(tickers);
@@ -86,9 +106,22 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
                             if (lastMsg?.role === 'ai') {
+                                // Final clean check with robust regex
+                                const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
+                                let finalContent = streamContentRef.current;
+
+                                if (legalRegex.test(finalContent)) {
+                                    hasDisclaimerRef.current = true;
+                                    finalContent = finalContent.replace(legalRegex, "");
+                                }
+
                                 return [
                                     ...prev.slice(0, -1),
-                                    { ...lastMsg, content: streamContentRef.current }
+                                    {
+                                        ...lastMsg,
+                                        content: finalContent,
+                                        hasDisclaimer: hasDisclaimerRef.current
+                                    }
                                 ];
                             }
                             return prev;
@@ -103,15 +136,29 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                             const lastMsg = prev[prev.length - 1];
                             const errorMessage = err || "An unknown error occurred";
                             const errorMsg = `\n\n ** Error:** ${errorMessage} `;
+
+                            // Also strip from error state
+                            const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
+                            let currentContent = streamContentRef.current;
+                            if (legalRegex.test(currentContent)) {
+                                hasDisclaimerRef.current = true; // Use the footer even in error if applicable
+                                currentContent = currentContent.replace(legalRegex, "");
+                            }
+
                             if (lastMsg?.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
-                                    { ...lastMsg, content: streamContentRef.current + errorMsg }
+                                    {
+                                        ...lastMsg,
+                                        content: currentContent + errorMsg,
+                                        hasDisclaimer: hasDisclaimerRef.current
+                                    }
                                 ];
                             }
                             return prev;
                         });
                         setIsLoading(false);
+
                     }
                 }
             );
@@ -152,9 +199,21 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 const history = await agentService.getHistory(sessionId, session);
                 if (isStale) return;
 
+                // Sanitize history (remove raw tags and set flags)
+                const sanitizedHistory = history.map(msg => {
+                    const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
+                    const hasDisclaimer = legalRegex.test(msg.content);
+                    const cleanContent = msg.content.replace(legalRegex, "");
+                    return {
+                        ...msg,
+                        content: cleanContent,
+                        hasDisclaimer: hasDisclaimer || msg.hasDisclaimer
+                    };
+                });
+
                 // Load history but preserve anything already in messages (from processQuery)
                 setMessages(prev => {
-                    if (prev.length === 0) return history;
+                    if (prev.length === 0) return sanitizedHistory;
                     return prev;
                 });
             } catch (e) {
@@ -233,7 +292,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                                 contentRef={streamContentRef}
                                                 isStreaming={isLoading}
                                             />
-                                            <div className="mt-4 flex items-center justify-center gap-3 text-sm font-mono text-ai/70 bg-ai/5 px-6 py-4 rounded-lg border border-ai/10">
+                                            <div className={`${hasStreamContent ? 'mt-4' : ''} flex items-center justify-center gap-3 text-sm font-mono text-ai/70 bg-ai/5 px-6 py-4 rounded-lg border border-ai/10 transition-all duration-300`}>
                                                 <div className="w-2 h-2 bg-ai rounded-full animate-ping shrink-0" />
                                                 <span>{loadingStatus}</span>
                                             </div>
@@ -243,6 +302,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                         </div>
                                     )}
+
+                                    {/* Render Disclaimer if flagged */}
+                                    {msg.hasDisclaimer && <DisclaimerFooter />}
                                 </>
                             ) : (
                                 msg.content

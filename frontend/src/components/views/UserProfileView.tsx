@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { Mail, CreditCard, ChevronRight, Target, AlertCircle, CheckCircle2, LayoutDashboard, Briefcase, FileCheck, Lock } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Mail, CreditCard, ChevronRight, ChevronLeft, Target, AlertCircle, CheckCircle2, LayoutDashboard, Briefcase, FileCheck, Lock, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Session } from '@supabase/supabase-js';
 import GlassCard from '../profile/GlassCard';
+import PersonalizedAssetView from './PersonalizedAssetView';
 
 interface UserProfileViewProps {
     session: Session;
@@ -15,10 +17,11 @@ interface PendingItem {
     quantity?: number;
     price?: number;
     source_doc?: string;
-    status: string;
+    buy_date?: string;
+    status: 'pending' | 'verified';
 }
 
-const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze }) => {
+const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
     const user = session.user;
     const email = user.email ?? 'No Email';
 
@@ -35,6 +38,10 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
     const [newAsset, setNewAsset] = useState({ ticker: '', asset_name: '', quantity: '', price: '' });
+    const [deleteConfirmTicker, setDeleteConfirmTicker] = useState<string | null>(null);
+    const [editingTicker, setEditingTicker] = useState<string | null>(null);
+    const [editShares, setEditShares] = useState('');
+    const [editMode, setEditMode] = useState<'add' | 'remove'>('add');
 
     // Fetch both pending and verified holdings
     React.useEffect(() => {
@@ -86,24 +93,211 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
         }
     };
 
-    const handleAddAsset = () => {
+    const handleAddAsset = async () => {
         if (!newAsset.ticker || !newAsset.quantity) return;
 
-        const newItem: PendingItem = {
-            id: `manual_${String(Date.now())}`,
-            ticker: newAsset.ticker.toUpperCase(),
-            asset_name: newAsset.asset_name || newAsset.ticker.toUpperCase(),
-            quantity: parseFloat(newAsset.quantity),
-            price: newAsset.price ? parseFloat(newAsset.price) : 0,
-            source_doc: 'Manual Entry',
-            status: 'verified'
-        };
+        try {
+            const token = session.access_token;
+            const payload = {
+                ticker: newAsset.ticker.toUpperCase(),
+                asset_name: newAsset.asset_name || newAsset.ticker.toUpperCase(),
+                quantity: parseFloat(newAsset.quantity),
+                price: newAsset.price ? parseFloat(newAsset.price) : 0,
+                source_doc: 'Manual Entry',
+                buy_date: new Date().toISOString()
+            };
 
-        // Add directly to verified items (manual entries skip verification)
-        setVerifiedItems(prev => [...prev, newItem]);
-        setNewAsset({ ticker: '', asset_name: '', quantity: '', price: '' });
-        setShowAddModal(false);
+            const res = await fetch('http://localhost:8001/v1/portfolio/holdings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                const data = await res.json() as { status: string, item: PendingItem };
+                // Add directly to verified items
+                setVerifiedItems(prev => [...prev, data.item]);
+                setNewAsset({ ticker: '', asset_name: '', quantity: '', price: '' });
+                setShowAddModal(false);
+            } else {
+                console.error("Failed to save asset");
+            }
+        } catch (e) {
+            console.error("Error saving asset:", e);
+        }
     };
+
+    // Calculate Total Portfolio Value (Cost Basis) for Weighting
+    const totalPortfolioValue = verifiedItems.reduce((acc, item) => {
+        return acc + ((item.quantity ?? 0) * (item.price ?? 0));
+    }, 0);
+
+    // Aggregate holdings by ticker to prevent duplicate cards
+    const aggregatedHoldings = React.useMemo(() => {
+        const tickerMap = new Map<string, PendingItem>();
+
+        for (const item of verifiedItems) {
+            const ticker = item.ticker?.toUpperCase() ?? 'UNKNOWN';
+            const existing = tickerMap.get(ticker);
+
+            if (existing) {
+                // Combine: sum quantity, use weighted avg price, keep latest buy_date
+                const existingQty = existing.quantity ?? 0;
+                const existingPrice = existing.price ?? 0;
+                const newQty = item.quantity ?? 0;
+                const newPrice = item.price ?? 0;
+
+                const totalQty = existingQty + newQty;
+                const avgPrice = totalQty > 0
+                    ? ((existingQty * existingPrice) + (newQty * newPrice)) / totalQty
+                    : 0;
+
+                tickerMap.set(ticker, {
+                    ...existing,
+                    quantity: totalQty,
+                    price: avgPrice,
+                    // Keep most recent buy_date
+                    buy_date: (item.buy_date && existing.buy_date && item.buy_date > existing.buy_date)
+                        ? item.buy_date
+                        : existing.buy_date
+                });
+            } else {
+                tickerMap.set(ticker, { ...item, ticker });
+            }
+        }
+
+        return Array.from(tickerMap.values());
+    }, [verifiedItems]);
+
+    // Handler: Delete a holding by ticker (calls backend DELETE)
+    const handleDeleteHolding = async (ticker: string) => {
+        try {
+            const token = session.access_token;
+            const res = await fetch(`http://localhost:8001/v1/portfolio/holdings/${ticker}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                // Remove from local state
+                setVerifiedItems(prev => prev.filter(i => (i.ticker?.toUpperCase() ?? '') !== ticker.toUpperCase()));
+                setDeleteConfirmTicker(null);
+            } else {
+                console.error("Delete failed");
+            }
+        } catch (e) {
+            console.error("Error deleting holding:", e);
+        }
+    };
+
+    // Handler: Add or Remove shares from existing holding
+    const handleEditShares = async () => {
+        if (!editingTicker || !editShares) return;
+        try {
+            const token = session.access_token;
+            const existingItem = aggregatedHoldings.find(i => i.ticker?.toUpperCase() === editingTicker.toUpperCase());
+            if (!existingItem) return;
+
+            const shareChange = parseFloat(editShares);
+            const currentQty = existingItem.quantity ?? 0;
+
+            if (editMode === 'remove') {
+                // If removing more than we have, just delete all
+                if (shareChange >= currentQty) {
+                    await handleDeleteHolding(editingTicker);
+                    return;
+                }
+                // For partial removal: Add negative entry (or update backend to support PATCH)
+                // Simple approach: Add with negative quantity (backend aggregation will handle)
+                const payload = {
+                    ticker: editingTicker.toUpperCase(),
+                    asset_name: existingItem.asset_name ?? editingTicker,
+                    quantity: -shareChange,
+                    price: existingItem.price ?? 0,
+                    source_doc: 'Manual Entry',
+                    buy_date: new Date().toISOString()
+                };
+
+                const res = await fetch('http://localhost:8001/v1/portfolio/holdings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    // Update local state to reflect reduction
+                    setVerifiedItems(prev => prev.map(i =>
+                        (i.ticker?.toUpperCase() === editingTicker.toUpperCase())
+                            ? { ...i, quantity: (i.quantity ?? 0) - shareChange }
+                            : i
+                    ));
+                }
+            } else {
+                // Add shares
+                const payload = {
+                    ticker: editingTicker.toUpperCase(),
+                    asset_name: existingItem.asset_name ?? editingTicker,
+                    quantity: shareChange,
+                    price: existingItem.price ?? 0,
+                    source_doc: 'Manual Entry',
+                    buy_date: new Date().toISOString()
+                };
+
+                const res = await fetch('http://localhost:8001/v1/portfolio/holdings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json() as { status: string, item: PendingItem };
+                    setVerifiedItems(prev => [...prev, data.item]);
+                }
+            }
+
+            setEditingTicker(null);
+            setEditShares('');
+            setEditMode('add');
+        } catch (e) {
+            console.error("Error editing shares:", e);
+        }
+    };
+
+
+    // Carousel Navigation Logic
+    const handleNavigate = (direction: 'next' | 'prev') => {
+        if (!selectedItem || verifiedItems.length === 0) return;
+        const currentIndex = verifiedItems.findIndex(i => i.id === selectedItem.id);
+        if (currentIndex === -1) return;
+
+        let newIndex;
+        if (direction === 'next') {
+            newIndex = (currentIndex + 1) % verifiedItems.length;
+        } else {
+            newIndex = (currentIndex - 1 + verifiedItems.length) % verifiedItems.length;
+        }
+        setSelectedItem(verifiedItems[newIndex]);
+    };
+
+    // Keyboard support for carousel
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!selectedItem) return;
+            if (e.key === 'ArrowRight') handleNavigate('next');
+            if (e.key === 'ArrowLeft') handleNavigate('prev');
+            if (e.key === 'Escape') setSelectedItem(null);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => { window.removeEventListener('keydown', handleKeyDown); };
+    }, [selectedItem, verifiedItems]);
 
     const scrollToSection = (sectionId: string, ref: React.RefObject<HTMLDivElement>) => {
         setActiveSection(sectionId);
@@ -254,8 +448,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
                     </div>
 
                     <div className="flex gap-6 overflow-x-auto pb-8 pt-2 px-1 -mx-1 no-scrollbar">
-                        {verifiedItems.length > 0 ? (
-                            verifiedItems.map((item, index) => {
+                        {aggregatedHoldings.length > 0 ? (
+                            aggregatedHoldings.map((item, index) => {
                                 const colors = ['#3b82f6', '#10b981', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444'];
                                 return (
                                     <GlassCard
@@ -268,6 +462,10 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
                                         value={(item.quantity ?? 0) * (item.price ?? 0)}
                                         color={colors[index % colors.length]}
                                         onClick={() => { setSelectedItem(item); }}
+                                        session={session}
+                                        layoutId={`card-${item.id}`}
+                                        onEdit={(ticker) => { setEditingTicker(ticker); }}
+                                        onDelete={(ticker) => { setDeleteConfirmTicker(ticker); }}
                                     />
                                 );
                             })
@@ -476,7 +674,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
                                 Cancel
                             </button>
                             <button
-                                onClick={() => { handleAddAsset(); }}
+                                onClick={() => { void handleAddAsset(); }}
                                 className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/80 transition-colors"
                             >
                                 Add Asset
@@ -486,76 +684,188 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onAnalyze })
                 </div>
             )}
 
-            {/* Holding Detail Modal */}
-            {selectedItem && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-                    <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg mx-4">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary text-lg">
-                                        {selectedItem.ticker?.slice(0, 4) ?? 'N/A'}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white">{selectedItem.asset_name ?? selectedItem.ticker}</h3>
-                                        <p className="text-slate-400 text-sm">{selectedItem.ticker}</p>
+            {/* Refined Pop-Up Modal with Carousel */}
+            <AnimatePresence>
+                {selectedItem && (
+                    <>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                            onClick={() => { setSelectedItem(null); }}
+                        />
+
+                        {/* Modal Container */}
+                        <motion.div
+                            layoutId={`card-${selectedItem.id}`}
+                            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+                        >
+                            <div className="relative w-full max-w-4xl h-auto min-h-[500px] pointer-events-auto flex items-center">
+                                {/* Navigation Arrows (Outside Card) */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleNavigate('prev'); }}
+                                    className="absolute -left-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
+                                >
+                                    <ChevronLeft className="w-8 h-8 group-hover:-translate-x-0.5 transition-transform" />
+                                </button>
+
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleNavigate('next'); }}
+                                    className="absolute -right-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
+                                >
+                                    <ChevronRight className="w-8 h-8 group-hover:translate-x-0.5 transition-transform" />
+                                </button>
+
+                                {/* Main Card Content */}
+                                <div className="w-full h-full bg-[#0f172a] rounded-3xl overflow-hidden border border-white/10 shadow-2xl flex flex-col relative">
+                                    {/* Close Button */}
+                                    <button
+                                        onClick={() => { setSelectedItem(null); }}
+                                        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/20 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+
+                                    {/* Content Scroll Area */}
+                                    <div className="flex-1 overflow-y-auto no-scrollbar">
+                                        <PersonalizedAssetView
+                                            session={session}
+                                            ticker={selectedItem.ticker ?? ''}
+                                            quantity={selectedItem.quantity ?? 0}
+                                            avgPrice={selectedItem.price ?? 0}
+                                            buyDate={selectedItem.buy_date} // Pass buy_date if available
+                                            totalPortfolioValue={totalPortfolioValue}
+                                            onClose={() => { setSelectedItem(null); }}
+                                        />
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => { setSelectedItem(null); }}
-                                className="text-slate-500 hover:text-white text-2xl leading-none"
-                            >
-                                ×
-                            </button>
-                        </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
-                                <div className="text-xs text-slate-500 uppercase mb-1">Shares</div>
-                                <div className="text-xl font-bold text-white">{selectedItem.quantity?.toLocaleString() ?? 0}</div>
+            {/* Delete Confirmation Modal */}
+            <AnimatePresence>
+                {deleteConfirmTicker && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                        onClick={() => setDeleteConfirmTicker(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-white/10"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 className="text-xl font-bold text-white mb-2">Delete {deleteConfirmTicker}?</h3>
+                            <p className="text-slate-400 text-sm mb-6">This will remove all shares of {deleteConfirmTicker} from your portfolio. This action cannot be undone.</p>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmTicker(null)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleDeleteHolding(deleteConfirmTicker)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors font-medium"
+                                >
+                                    Delete
+                                </button>
                             </div>
-                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
-                                <div className="text-xs text-slate-500 uppercase mb-1">Avg Price</div>
-                                <div className="text-xl font-bold text-white">${selectedItem.price?.toLocaleString() ?? 0}</div>
-                            </div>
-                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
-                                <div className="text-xs text-slate-500 uppercase mb-1">Total Value</div>
-                                <div className="text-xl font-bold text-white">
-                                    ${((selectedItem.quantity ?? 0) * (selectedItem.price ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </div>
-                            </div>
-                            <div className="bg-black/40 rounded-xl p-4 border border-white/5">
-                                <div className="text-xs text-slate-500 uppercase mb-1">Source</div>
-                                <div className="text-sm font-medium text-white truncate">{selectedItem.source_doc ?? 'Manual'}</div>
-                            </div>
-                        </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => { setSelectedItem(null); }}
-                                className="flex-1 px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-colors"
-                            >
-                                Close
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (onAnalyze && selectedItem.ticker) {
-                                        onAnalyze(selectedItem.ticker);
-                                        setSelectedItem(null);
-                                    }
-                                }}
-                                className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/80 transition-colors"
-                            >
-                                View Analysis
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Edit Shares Modal */}
+            <AnimatePresence>
+                {editingTicker && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                        onClick={() => { setEditingTicker(null); setEditShares(''); setEditMode('add'); }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-white/10"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 className="text-xl font-bold text-white mb-4">Edit {editingTicker}</h3>
+
+                            {/* Add/Remove Toggle */}
+                            <div className="flex bg-white/5 rounded-xl p-1 mb-5">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditMode('add')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'add'
+                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                            : 'text-slate-400 hover:text-white'
+                                        }`}
+                                >
+                                    + Add
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditMode('remove')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'remove'
+                                            ? 'bg-red-500/20 text-red-400'
+                                            : 'text-slate-400 hover:text-white'
+                                        }`}
+                                >
+                                    − Remove
+                                </button>
+                            </div>
+
+                            <div className="mb-6">
+                                <label className="block text-sm text-slate-400 mb-2">
+                                    {editMode === 'add' ? 'Shares to Add' : 'Shares to Remove'}
+                                </label>
+                                <input
+                                    type="number"
+                                    value={editShares}
+                                    onChange={(e) => setEditShares(e.target.value)}
+                                    placeholder="0"
+                                    min="0"
+                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-primary/50"
+                                />
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => { setEditingTicker(null); setEditShares(''); setEditMode('add'); }}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleEditShares()}
+                                    className={`flex-1 px-4 py-2.5 rounded-xl font-medium transition-colors ${editMode === 'add'
+                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                                        }`}
+                                >
+                                    {editMode === 'add' ? 'Add Shares' : 'Remove Shares'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

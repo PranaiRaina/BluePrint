@@ -28,5 +28,35 @@
     "id": "temp_3",
     "status": "verified",
     "timestamp": "2024-02-01T20:00:00Z"
+  },
+  {
+    "ticker": "TSLA",
+    "asset_name": "Tesla",
+    "quantity": 100.0,
+    "price": 200.0,
+    "source_doc": "Manual Entry",
+    "id": "manual_d6ab3614-342a-4e52-8165-31b56c4f469c",
+    "status": "verified",
+    "timestamp": "2026-02-03T18:47:56.758023"
+  },
+  {
+    "ticker": "TSLA",
+    "asset_name": "Tesla ",
+    "quantity": 100.0,
+    "price": 100.0,
+    "source_doc": "Manual Entry",
+    "id": "manual_13026343-45b1-4658-bfab-6f85fd7d5e75",
+    "status": "verified",
+    "timestamp": "2026-02-03T19:46:48.303531"
+  },
+  {
+    "ticker": "TSLA",
+    "asset_name": "Tesla",
+    "quantity": -100.0,
+    "price": 150.0,
+    "source_doc": "Manual Entry",
+    "id": "manual_7eae3b51-681c-4de3-b8f0-a3c8eb17d198",
+    "status": "verified",
+    "timestamp": "2026-02-03T19:56:26.981267"
   }
 ]
