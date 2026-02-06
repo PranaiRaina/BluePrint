@@ -5,8 +5,8 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 interface NavbarProps {
-    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile';
-    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile') => void;
+    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics';
+    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics') => void;
     session: Session | null;
 }
 
@@ -52,7 +52,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
                     return (
                         <button
                             key={tab.id}
-                            onClick={() => { setActiveTab(tab.id as 'overview' | 'market' | 'vault' | 'chat' | 'stocks'); }}
+                            onClick={() => { setActiveTab(tab.id as 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'analytics'); }}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all duration-300 relative ${isActive
                                 ? 'text-white'
                                 : 'text-text-secondary hover:text-white hover:bg-white/5'

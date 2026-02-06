@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 from litellm import acompletion
 from ManagerAgent.router_intelligence import IntentType
 from ManagerAgent.tools import perform_rag_search, ask_stock_analyst
+from ManagerAgent.profile_engine import get_profile_directives
+from ManagerAgent.database import get_db
 from CalcAgent.src.agent import financial_agent, general_agent
 from CalcAgent.src.utils import run_with_retry
 import os
@@ -63,11 +65,11 @@ def enrich_query_with_context(query: str, context: Dict[str, Any]) -> str:
 
 
 async def synthesize_response(
-    query: str, results: Dict[str, str], history: str = ""
+    query: str, results: Dict[str, str], history: str = "", user_directives: str = ""
 ) -> str:
     """Use LLM to combine multiple agent results into one coherent response with chat history context."""
 
-    if len(results) == 1 and not history:
+    if len(results) == 1 and not history and not user_directives:
         return list(results.values())[0]
 
     results_text = "\n\n".join(
@@ -78,9 +80,16 @@ async def synthesize_response(
         ]
     )
 
+    # Build persona section if directives exist
+    persona_section = ""
+    if user_directives:
+        persona_section = f"""\n\nUSER PROFILE DIRECTIVES (Apply these to your response style and recommendations):
+{user_directives}
+"""
+
     prompt = f"""You are a Master Financial Orchestrator. 
 Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
-
+{persona_section}
 CHAT HISTORY (for context):
 {history}
 
@@ -92,6 +101,7 @@ AGENT FINDINGS:
 INSTRUCTIONS:
 - Integrate the findings logically.
 - If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
+- Apply the user profile directives to adjust your tone and recommendations.
 - Maintain a helpful, analytical tone.
 - Do not repeat yourself.
 - Ensure the final output is formatted in clean Markdown.
@@ -108,7 +118,7 @@ INSTRUCTIONS:
 
 
 async def synthesize_response_stream(
-    query: str, results: Dict[str, str], history: str = ""
+    query: str, results: Dict[str, str], history: str = "", user_directives: str = ""
 ):
     """Streamed synthesis."""
 
@@ -120,9 +130,16 @@ async def synthesize_response_stream(
         ]
     )
 
+    # Build persona section if directives exist
+    persona_section = ""
+    if user_directives:
+        persona_section = f"""\n\nUSER PROFILE DIRECTIVES (Apply these to your response style and recommendations):
+{user_directives}
+"""
+
     prompt = f"""You are a Master Financial Orchestrator. 
 Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
-
+{persona_section}
 CHAT HISTORY (for context):
 {history}
 
@@ -134,6 +151,7 @@ AGENT FINDINGS:
 INSTRUCTIONS:
 - Integrate the findings logically.
 - If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
+- Apply the user profile directives to adjust your tone and recommendations.
 - Maintain a helpful, analytical tone.
 - Do not repeat yourself.
 - Ensure the final output is formatted in clean Markdown.
@@ -207,7 +225,7 @@ async def orchestrate(
             context["results"]["general"] = result.final_output
 
     final_response = await synthesize_response(
-        query, context["results"], history=history
+        query, context["results"], history=history, user_directives=""  # Non-stream path - directives not fetched
     )
     return final_response
 
@@ -221,8 +239,17 @@ async def orchestrate_stream(
     """
     Streamed version of orchestrate with 'Status for Agents, Tokens for Synthesis'.
     Supports DIRECT STREAMING for single-intent queries to minimize latency.
+    Now with Dynamic Profile Directives injection.
     """
     context = {"query": query, "results": {}}
+    
+    # Fetch user profile directives for personalized responses
+    user_directives = ""
+    try:
+        with get_db() as conn:
+            user_directives = get_profile_directives(user_id, conn)
+    except Exception as e:
+        print(f"[Orchestrator] Could not fetch profile directives: {e}")
 
     # Execution Order: RAG -> STOCK -> CALCULATOR -> GENERAL
     ORDER_PRIORITY = {
@@ -271,6 +298,9 @@ async def orchestrate_stream(
                 async for chunk in ask_stock_analyst_stream(enriched_query):
                     if chunk["type"] == "status":
                         yield chunk
+                    elif chunk["type"] == "data":
+                        # Push chart data to frontend immediately
+                        yield chunk 
                     elif chunk["type"] == "token":
                         full_stock_response.append(chunk["content"])
                         if should_direct_stream:
@@ -325,7 +355,7 @@ async def orchestrate_stream(
         if not should_direct_stream:
             yield {"type": "status", "content": "Synthesizing final response..."}
             async for chunk in synthesize_response_stream(
-                query, context["results"], history=history
+                query, context["results"], history=history, user_directives=user_directives
             ):
                 yield chunk
 

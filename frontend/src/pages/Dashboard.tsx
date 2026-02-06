@@ -10,6 +10,7 @@ import UploadZone from '../components/views/UploadZone';
 import ChatView from '../components/views/ChatView';
 import UserProfileView from '../components/views/UserProfileView';
 import StockAnalyticsView from '../components/views/StockAnalyticsView';
+import PortfolioAnalysisView from '../components/views/PortfolioAnalysisView';
 import Typewriter from '../components/ui/Typewriter';
 
 import type { Session } from '@supabase/supabase-js';
@@ -20,7 +21,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics'>('overview');
 
     // Helper to generate a unique session ID
     const generateId = () => {
@@ -46,7 +47,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setMockInsight(null);
         setExtractedTickers([]); // <--- Clear previous tickers
         setChatKey(prev => prev + 1); // Force ChatView remount
-        setActiveTab('chat'); // Switch to chat when starting new
+        setActiveTab('overview'); // Switch to overview for fresh start
     };
 
     // Helper to extract stock tickers from text (Simplified Fallback)
@@ -125,6 +126,10 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             // Start process
             setLoadingStage(3);
 
+            // Generate a fresh session ID for this new search
+            const newSessionId = generateId();
+            setCurrentSessionId(newSessionId);
+
             // Initial empty state
             setMockInsight({
                 hard: { score: "Calculating...", yield: "---", conf: "---" },
@@ -135,6 +140,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 }
             });
             setInitialChatQuery(query);
+            setChatKey(prev => prev + 1); // Force ChatView remount
             setActiveTab('chat');
             setLoadingStage(0);
             setQuery('');
@@ -171,7 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     }, [extractedTickers, currentSessionId, session]);
 
 
-    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile') => {
+    const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics') => {
         // Fix: Removed aggressive redirect that breaks Home tab navigation
         setActiveTab(tab);
     };
@@ -186,8 +192,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
             <div className="pt-16 h-screen relative overflow-hidden">
 
-                {/* Sidebar - Fixed, Overlay on Expand (Hidden on Profile) */}
-                {activeTab !== 'profile' && (
+                {/* Sidebar - Fixed, Overlay on Expand (Hidden on Profile/Analytics) */}
+                {activeTab !== 'profile' && activeTab !== 'analytics' && (
                     <Sidebar
                         session={session}
                         activeSessionId={currentSessionId}
@@ -202,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
                 <motion.div
                     className={`w-full h-full relative z-10 flex flex-col items-center pl-0 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-                    animate={{ paddingLeft: activeTab === 'profile' ? 0 : (isSidebarCollapsed ? 64 : 260) }}
+                    animate={{ paddingLeft: (activeTab === 'profile' || activeTab === 'analytics') ? 0 : (isSidebarCollapsed ? 64 : 260) }}
                     transition={{ duration: 0.15, ease: "linear" }}
                 >
                     <AnimatePresence>
@@ -338,12 +344,21 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             setCurrentSessionId(generateId());
                             setChatKey(prev => prev + 1);
                             setActiveTab('chat');
-                        }} />}
+                        }} onViewAnalysis={() => setActiveTab('analytics')} />}
                     </div>
 
-                    {/* Keep StockAnalyticsView mounted to preserve chart state/data */}
                     <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
                         <StockAnalyticsView session={session} tickers={extractedTickers} />
+                    </div>
+
+                    {/* Analytics Full Page View */}
+                    <div className={`w-full h-full ${activeTab === 'analytics' ? 'block' : 'hidden'}`}>
+                        {activeTab === 'analytics' && (
+                            <PortfolioAnalysisView
+                                session={session}
+                                onBack={() => setActiveTab('profile')}
+                            />
+                        )}
                     </div>
                 </motion.div>
             </div>

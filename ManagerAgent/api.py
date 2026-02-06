@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv() # Load env vars early
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,13 +18,14 @@ from Auth.dependencies import get_current_user
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
+from ManagerAgent.profile_engine import UserProfile, InvestmentObjective, TaxStatus, distill_profile
 from supabase import create_client, Client
 from fastapi.responses import StreamingResponse
 import json
 import uuid
-from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from fastapi import UploadFile, File
+from ManagerAgent.database import get_db, init_db, init_pool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -91,31 +95,7 @@ def check_rate_limit(client_ip: str):
 
 
 # --- Database Setup (Supabase Postgres) ---
-SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL")
-
-# Initialize Connection Pool
-pool = None
-if SUPABASE_DB_URL:
-    print("Initializing Supabase Postgres Connection Pool...")
-    pool = ConnectionPool(
-        conninfo=SUPABASE_DB_URL,
-        max_size=20,
-        kwargs={
-            "autocommit": True,
-            "row_factory": dict_row,
-            "prepare_threshold": None,  # Disable prepared statements for PGBouncer (Transaction Pooling)
-        },
-    )
-else:
-    print("WARNING: SUPABASE_DB_URL not found in .env. Database operations will fail.")
-
-
-def get_db():
-    """Context manager for getting a connection from the pool."""
-    if not pool:
-        raise HTTPException(status_code=500, detail="Database pool not initialized.")
-    return pool.connection()
-
+# See ManagerAgent.database for pool initialization
 
 # Initialize Supabase client for storage (Bucket logic)
 supabase: Client = create_client(
@@ -304,6 +284,14 @@ class CreateHoldingRequest(BaseModel):
     quantity: float
     price: float
     source_doc: str = "Manual Entry"
+
+
+class UpdateProfileRequest(BaseModel):
+    risk_level: int
+    objective: str
+    net_worth: Optional[float]
+    tax_status: str
+    strategy_notes: Optional[str] = None  # New field
 
 
 @app.get("/health")
@@ -1064,6 +1052,123 @@ async def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
         raise
     except Exception as e:
         print(f"Error deleting holding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# User Profile Endpoints - Dynamic Agent Profile System
+# =============================================================================
+
+@app.get("/v1/user/profile")
+async def get_user_profile(user: dict = Depends(get_current_user)):
+    """Get the current user's investment profile."""
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user")
+    
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT risk_level, objective, net_worth, tax_status, strategy_notes, version, created_at, updated_at
+                    FROM user_profiles
+                    WHERE user_id = %s
+                    """,
+                    (user_id,)
+                )
+                row = cur.fetchone()
+                
+                if not row:
+                    # Return default profile
+                    return {
+                        "risk_level": 50,
+                        "objective": "growth",
+                        "net_worth": None,
+                        "tax_status": "mixed",
+                        "strategy_notes": None,
+                        "version": 1,
+                        "is_default": True
+                    }
+                
+                return {
+                    "risk_level": row["risk_level"],
+                    "objective": row["objective"],
+                    "net_worth": row["net_worth"],
+                    "tax_status": row["tax_status"],
+                    "strategy_notes": row.get("strategy_notes"),
+                    "version": row.get("version", 1),
+                    "is_default": False,
+                    "updated_at": str(row["updated_at"]) if row.get("updated_at") else None
+                }
+    except Exception as e:
+        print(f"Error fetching profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/user/profile")
+async def update_user_profile(body: UpdateProfileRequest, user: dict = Depends(get_current_user)):
+    """Update the current user's investment profile (upsert)."""
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user")
+    
+    # Validate objective and tax_status
+    valid_objectives = ["growth", "income", "preservation", "speculation"]
+    valid_tax_statuses = ["taxable", "tax_advantaged", "mixed"]
+    
+    if body.objective not in valid_objectives:
+        raise HTTPException(status_code=400, detail=f"Invalid objective. Must be one of: {valid_objectives}")
+    if body.tax_status not in valid_tax_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid tax_status. Must be one of: {valid_tax_statuses}")
+    if not 0 <= body.risk_level <= 100:
+        raise HTTPException(status_code=400, detail="risk_level must be between 0 and 100")
+    
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO user_profiles (user_id, risk_level, objective, net_worth, tax_status, strategy_notes, version, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, 1, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        risk_level = EXCLUDED.risk_level,
+                        objective = EXCLUDED.objective,
+                        net_worth = EXCLUDED.net_worth,
+                        tax_status = EXCLUDED.tax_status,
+                        strategy_notes = EXCLUDED.strategy_notes
+                    RETURNING risk_level, objective, net_worth, tax_status, strategy_notes, version
+                    """,
+                    (user_id, body.risk_level, body.objective, body.net_worth, body.tax_status, body.strategy_notes)
+                )
+                row = cur.fetchone()
+                conn.commit()
+                
+                # Distill profile to show user what directives are active
+                profile = UserProfile(
+                    user_id=user_id,
+                    risk_level=row["risk_level"],
+                    objective=InvestmentObjective(row["objective"]),
+                    net_worth=row["net_worth"],
+                    tax_status=TaxStatus(row["tax_status"]),
+                    strategy_notes=row["strategy_notes"],
+                    version=row["version"]
+                )
+                
+                return {
+                    "status": "success",
+                    "profile": {
+                        "risk_level": row["risk_level"],
+                        "objective": row["objective"],
+                        "net_worth": row["net_worth"],
+                        "tax_status": row["tax_status"],
+                        "strategy_notes": row["strategy_notes"],
+                        "version": row["version"]
+                    },
+                    "active_persona": distill_profile(profile)[:200] + "..."  # Preview
+                }
+    except Exception as e:
+        print(f"Error updating profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -53,6 +53,8 @@ async def classify_intent(query: str) -> RouterDecision:
         return decision
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Router Error: {e}. Defaulting to GENERAL.")
         return RouterDecision(
             intents=[IntentType.GENERAL],

@@ -7,7 +7,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import LiveMessage from '../ui/LiveMessage';
 import Typewriter from '../ui/Typewriter';
-import DisclaimerFooter from '../ui/DisclaimerFooter';
 
 interface ChatViewProps {
     session: Session;
@@ -304,7 +303,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                     )}
 
                                     {/* Render Disclaimer if flagged */}
-                                    {msg.hasDisclaimer && <DisclaimerFooter />}
+                                    {/* {msg.hasDisclaimer && <DisclaimerFooter />} */}
                                 </>
                             ) : (
                                 msg.content

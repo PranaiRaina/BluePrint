@@ -88,6 +88,7 @@ RULES:
 - Extract specific Tickers (e.g. "Apple" -> "AAPL").
 - If the user asks for "Comparison", create steps for EACH stock.
 - If the user asks for "Risk" or "Deep Dive", use 'quant_analysis'.
+- If the user asks "Should I buy", "Verdict", or "Recommendation", use 'get_stock_data', 'quant_analysis', AND 'news_research'.
 - If the user asks "Why" or for "News", use 'news_research'.
 - If the user just asks "Price" or "Chart", use 'get_stock_data'.
 - For generic "Analyze X", combine 'get_stock_data', 'quant_analysis' and 'news_research'.

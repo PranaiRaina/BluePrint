@@ -152,6 +152,7 @@ async def ask_stock_analyst_stream(query: str):
         async for chunk in agent_engine.run_workflow_stream(
             query, user_context=user_context
         ):
+            # Pass through ALL chunks (tokens, status, and data)
             yield chunk
 
     except Exception as e:

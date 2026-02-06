@@ -164,6 +164,14 @@ class AgentEngine:
             result = await execute_step(step)
             execution_results[f"step_{i}_{step.tool}"] = result
 
+        # Yield Chart Data if available
+        if charts_data:
+            import json
+            yield {
+                "type": "data",
+                "content": json.dumps({"charts": charts_data})
+            }
+
         # 3. Synthesize (Streaming)
         yield {"type": "status", "content": "Synthesizing recommendation..."}
         async for chunk in self._generate_recommendation_stream(

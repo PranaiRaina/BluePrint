@@ -4,10 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { Session } from '@supabase/supabase-js';
 import GlassCard from '../profile/GlassCard';
 import PersonalizedAssetView from './PersonalizedAssetView';
+import StrategySettings from '../profile/StrategySettings';
 
 interface UserProfileViewProps {
     session: Session;
     onAnalyze?: (ticker: string) => void;
+    onViewAnalysis?: () => void;
 }
 
 interface PendingItem {
@@ -21,7 +23,7 @@ interface PendingItem {
     status: 'pending' | 'verified';
 }
 
-const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
+const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalysis }) => {
     const user = session.user;
     const email = user.email ?? 'No Email';
 
@@ -382,53 +384,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
 
                 {/* 2. Strategy Section */}
                 <div ref={strategyRef} className="scroll-mt-24">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                            <Target className="w-5 h-5" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white">Financial Strategy</h2>
-                    </div>
-
-                    <div className="glass-card p-8 rounded-3xl border border-white/10 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="space-y-2">
-                                <label htmlFor="primary-objective" className="text-xs text-slate-400 uppercase tracking-wider">Primary Objective</label>
-                                <select id="primary-objective" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary/50 appearance-none">
-                                    <option>Long-term Growth (Retirement)</option>
-                                    <option>Passive Income (Dividends)</option>
-                                    <option>Capital Preservation</option>
-                                    <option>Aggressive Speculation</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="target-date" className="text-xs text-slate-400 uppercase tracking-wider">Target Date</label>
-                                <input id="target-date" type="date" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary/50" defaultValue="2045-01-01" />
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="risk-tolerance" className="text-xs text-slate-400 uppercase tracking-wider flex justify-between">
-                                    <span>Risk Tolerance</span>
-                                    <span className="text-primary">High</span>
-                                </label>
-                                <input id="risk-tolerance" type="range" className="w-full accent-primary h-2 bg-white/10 rounded-lg appearance-none cursor-pointer" />
-                                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                                    <span>Conservative</span>
-                                    <span>Aggressive</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 pt-4 border-t border-white/5">
-                            <label htmlFor="strategy-notes" className="text-xs text-slate-400 uppercase tracking-wider block mb-2">Strategy Notes (Agent Context)</label>
-                            <textarea
-                                id="strategy-notes"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary/50 resize-none h-24 text-sm"
-                                placeholder="e.g. I prefer tech stocks and want to avoid fossil fuels..."
-                                defaultValue="Focus on US Tech sector and emerging AI companies. Open to moderate volatility for higher growth."
-                            />
-                        </div>
-                    </div>
+                    <StrategySettings session={session} />
                 </div>
 
                 <hr className="border-t border-dashed border-white/10 my-12" />
@@ -442,7 +398,11 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                             </div>
                             <h2 className="text-2xl font-bold text-white">Your Portfolio</h2>
                         </div>
-                        <button className="text-primary hover:text-white text-sm font-medium flex items-center gap-1 transition-colors">
+                        <button
+                            type="button"
+                            onClick={() => onViewAnalysis?.()}
+                            className="text-primary hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                        >
                             View Analysis <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
@@ -812,8 +772,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                     type="button"
                                     onClick={() => setEditMode('add')}
                                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'add'
-                                            ? 'bg-emerald-500/20 text-emerald-400'
-                                            : 'text-slate-400 hover:text-white'
+                                        ? 'bg-emerald-500/20 text-emerald-400'
+                                        : 'text-slate-400 hover:text-white'
                                         }`}
                                 >
                                     + Add
@@ -822,8 +782,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                     type="button"
                                     onClick={() => setEditMode('remove')}
                                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'remove'
-                                            ? 'bg-red-500/20 text-red-400'
-                                            : 'text-slate-400 hover:text-white'
+                                        ? 'bg-red-500/20 text-red-400'
+                                        : 'text-slate-400 hover:text-white'
                                         }`}
                                 >
                                     − Remove
@@ -855,8 +815,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                                     type="button"
                                     onClick={() => void handleEditShares()}
                                     className={`flex-1 px-4 py-2.5 rounded-xl font-medium transition-colors ${editMode === 'add'
-                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                                         }`}
                                 >
                                     {editMode === 'add' ? 'Add Shares' : 'Remove Shares'}
