@@ -52,7 +52,7 @@ def rephrase_query(state: GraphState):
     if not history:
         return {"question": question}
 
-    print(f"DEBUG [RAG]: Rephrasing query with history context...")
+    print("DEBUG [RAG]: Rephrasing query with history context...")
     
     system = """You are a query rephraser for a financial RAG system. 
     Given a chat history and a follow-up user question, rephrase the question to be a standalone search query.

@@ -104,7 +104,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         // Final consistency update
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
-                            if (lastMsg?.role === 'ai') {
+                            if (lastMsg.role === 'ai') {
                                 // Final clean check with robust regex
                                 const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
                                 let finalContent = streamContentRef.current;
@@ -144,7 +144,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                 currentContent = currentContent.replace(legalRegex, "");
                             }
 
-                            if (lastMsg?.role === 'ai') {
+                            if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),
                                     {
@@ -165,7 +165,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
             console.error(error);
             setIsLoading(false);
         }
-    }, [session, sessionId, onTickers]);
+    }, [session, sessionId, onTickers, onSessionCreated, hasStreamContent]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -178,7 +178,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         let isStale = false;
 
         const initializeChat = async () => {
-            if (!session?.user?.id || !sessionId) return;
+            if (!session.user.id || !sessionId) return;
 
             // 1. Only clear and reload if the sessionId has actually changed
             if (prevSessionIdRef.current !== sessionId) {
@@ -235,7 +235,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         return () => {
             isStale = true;
         };
-    }, [sessionId, session, initialQuery, processQuery]);
+    }, [sessionId, session, initialQuery, processQuery, messages.length]);
 
     // Initial pulse handled in unified effect above
 

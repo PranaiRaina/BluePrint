@@ -1,31 +1,30 @@
 import os
-from dotenv import load_dotenv
-load_dotenv() # Load env vars early
+import uuid
+import json
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Optional, List
+from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
-from CalcAgent.src.utils import run_with_retry
-import asyncio
-from datetime import datetime, timedelta
-from contextlib import asynccontextmanager
+from supabase import create_client, Client
 
-# Import GeneralAgent for fallback
-from CalcAgent.src.agent import financial_agent, general_agent
-from fastapi import Depends
-from Auth.dependencies import get_current_user
+from ManagerAgent.database import get_db
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from ManagerAgent.profile_engine import UserProfile, InvestmentObjective, TaxStatus, distill_profile
-from supabase import create_client, Client
-from fastapi.responses import StreamingResponse
-import json
-import uuid
-from psycopg.rows import dict_row
-from fastapi import UploadFile, File
-from ManagerAgent.database import get_db, init_db, init_pool
+from CalcAgent.src.utils import run_with_retry
+# Import GeneralAgent for fallback
+from CalcAgent.src.agent import financial_agent, general_agent
+from Auth.dependencies import get_current_user
+
+from dotenv import load_dotenv
+# Load env vars before app/client init
+load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -103,12 +102,7 @@ supabase: Client = create_client(
 )
 
 
-def init_db():
-    """No-op for migration to Supabase (Schema assumed created via SQL Editor)."""
-    pass
-
-
-init_db()
+# init_db removed (redundant)
 
 
 def get_chat_history(user_id: str, session_id: str, limit: int = 10) -> str:
@@ -758,7 +752,7 @@ async def get_stock_data(
         # Filter candles if start_date is provided
         if start_date:
             try:
-                from datetime import datetime, timedelta
+                from datetime import datetime
                 # Parse start_date (YYYY-MM-DD or ISO) to timestamp
                 if "T" in start_date:
                      # Parse ISO format and normalize to midnight (start of day)

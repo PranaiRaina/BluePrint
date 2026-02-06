@@ -51,12 +51,14 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                         const key = (h.ticker ?? '').toUpperCase();
                         if (!key) continue;
                         if (aggregated.has(key)) {
-                            const existing = aggregated.get(key)!;
-                            const newQty = (existing.quantity ?? 0) + (h.quantity ?? 0);
-                            const existingTotal = (existing.quantity ?? 0) * (existing.price ?? 0);
-                            const newTotal = (h.quantity ?? 0) * (h.price ?? 0);
-                            existing.quantity = newQty;
-                            existing.price = newQty > 0 ? (existingTotal + newTotal) / newQty : 0;
+                            const existing = aggregated.get(key);
+                            if (existing) {
+                                const newQty = (existing.quantity ?? 0) + (h.quantity ?? 0);
+                                const existingTotal = (existing.quantity ?? 0) * (existing.price ?? 0);
+                                const newTotal = (h.quantity ?? 0) * (h.price ?? 0);
+                                existing.quantity = newQty;
+                                existing.price = newQty > 0 ? (existingTotal + newTotal) / newQty : 0;
+                            }
                         } else {
                             aggregated.set(key, { ...h, ticker: key });
                         }
@@ -83,14 +85,13 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                 if (!h.ticker) return null;
                 try {
                     const data = await agentService.getStockData(h.ticker.toUpperCase(), session, '1d');
-                    if (data) {
-                        return {
-                            ticker: h.ticker.toUpperCase(),
-                            currentPrice: data.currentPrice,
-                            change: data.change,
-                            changePercent: data.changePercent
-                        };
-                    }
+                    // Data is typed as always defined by agentService
+                    return {
+                        ticker: h.ticker.toUpperCase(),
+                        currentPrice: data.currentPrice,
+                        change: data.change,
+                        changePercent: data.changePercent
+                    };
                 } catch (e) {
                     console.error(`Failed to fetch ${h.ticker}:`, e);
                 }
@@ -153,8 +154,6 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
 
         // Sort by value for insights
         const sorted = [...holdingsWithWeight].sort((a, b) => b.currentValue - a.currentValue);
-        const bestPerformer = [...holdingsWithWeight].sort((a, b) => b.pnlPercent - a.pnlPercent)[0];
-        const worstPerformer = [...holdingsWithWeight].sort((a, b) => a.pnlPercent - b.pnlPercent)[0];
 
         return {
             holdings: holdingsWithWeight,
@@ -163,9 +162,9 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
             totalPnL,
             totalPnLPercent,
             numHoldings: holdings.length,
-            largestPosition: sorted[0],
-            bestPerformer,
-            worstPerformer
+            largestPosition: sorted[0] as typeof sorted[0] | undefined,
+            bestPerformer: [...holdingsWithWeight].sort((a, b) => b.pnlPercent - a.pnlPercent)[0] as typeof sorted[0] | undefined,
+            worstPerformer: [...holdingsWithWeight].sort((a, b) => a.pnlPercent - b.pnlPercent)[0] as typeof sorted[0] | undefined
         };
     }, [holdings, liveData]);
 
@@ -272,7 +271,7 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                                                 dataKey="value"
                                             >
                                                 {pieData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                    <Cell key={`cell-${String(index)}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
                                             <Tooltip
@@ -314,13 +313,14 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                                             <div className="text-emerald-400 text-sm">+{metrics.bestPerformer.pnlPercent.toFixed(2)}%</div>
                                         </div>
                                     )}
-                                    {metrics.worstPerformer && metrics.worstPerformer.pnlPercent < 0 && (
+                                    {/* Worst Performer Card */}
+                                    {metrics.worstPerformer && metrics.worstPerformer.pnlPercent < 0 ? (
                                         <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/20">
                                             <div className="text-red-400 text-xs uppercase tracking-wider mb-1">Underperformer</div>
                                             <div className="text-white font-semibold">{metrics.worstPerformer.ticker}</div>
                                             <div className="text-red-400 text-sm">{metrics.worstPerformer.pnlPercent.toFixed(2)}%</div>
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -370,7 +370,7 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                     </div>
                 )}
             </div>
-        </motion.div>
+        </motion.div >
     );
 };
 

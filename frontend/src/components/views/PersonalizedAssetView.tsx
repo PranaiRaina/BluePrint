@@ -114,12 +114,12 @@ const PersonalizedAssetView: React.FC<PersonalizedAssetViewProps> = ({
                         data={stockData.candles}
                         margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
                         onMouseMove={(e) => {
-                            if (e.activePayload && e.activePayload[0]) {
-                                const payload = e.activePayload[0].payload as { value: number; time: string };
+                            if (e.activePayload?.[0]) {
+                                const payload = (e.activePayload[0] as { payload: { value: number; time: string } }).payload;
                                 setHoverData({ value: payload.value, label: payload.time });
                             }
                         }}
-                        onMouseLeave={() => setHoverData(null)}
+                        onMouseLeave={() => { setHoverData(null); }}
                     >
                         <defs>
                             <linearGradient id={`gradientColor-${ticker}`} x1="0" y1="0" x2="0" y2="1">

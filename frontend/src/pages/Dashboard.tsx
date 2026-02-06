@@ -27,10 +27,11 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const generateId = () => {
         try {
             return crypto.randomUUID();
-        } catch (e) {
-            return `s_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        } catch {
+            return `s_${Date.now().toString()}_${Math.random().toString(36).substring(2, 9)}`;
         }
     };
+
 
     // Session Management
     const [currentSessionId, setCurrentSessionId] = useState<string>(() => generateId());
@@ -119,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-    const handleSearch = async (e: React.FormEvent) => {
+    const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         if (!query) return;
         try {
@@ -250,7 +251,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter' && !e.shiftKey) {
                                                         e.preventDefault();
-                                                        void handleSearch(e);
+                                                        handleSearch(e);
                                                     }
                                                 }}
                                                 placeholder="ask me anything..."
@@ -344,7 +345,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             setCurrentSessionId(generateId());
                             setChatKey(prev => prev + 1);
                             setActiveTab('chat');
-                        }} onViewAnalysis={() => setActiveTab('analytics')} />}
+                        }} onViewAnalysis={() => { setActiveTab('analytics'); }} />}
                     </div>
 
                     <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
@@ -356,7 +357,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                         {activeTab === 'analytics' && (
                             <PortfolioAnalysisView
                                 session={session}
-                                onBack={() => setActiveTab('profile')}
+                                onBack={() => { setActiveTab('profile'); }}
                             />
                         )}
                     </div>

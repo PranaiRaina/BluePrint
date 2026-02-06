@@ -234,7 +234,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
     };
 
     const getAnalystColor = (rec: string) => {
-        const r = rec.toUpperCase() || '';
+        const r = rec.toUpperCase();
         switch (r) {
             case 'STRONG BUY':
             case 'BUY':
@@ -252,7 +252,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ session, ticker }) => {
     };
 
     const getAnalystBadgeStyle = (rec: string) => {
-        const r = rec.toUpperCase() || '';
+        const r = rec.toUpperCase();
         switch (r) {
             case 'STRONG BUY':
             case 'BUY':

@@ -1,6 +1,5 @@
 from RAG_PIPELINE.src.ingestion import perform_similarity_search
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 

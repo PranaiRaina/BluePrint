@@ -2,14 +2,14 @@
 Prompts for the ManagerAgent Orchestrator.
 """
 
-from StockAgents.core.config import settings
 
-ORCHESTRATOR_SYNTHESIS_PROMPT = f"""You are a helpful financial assistant. Combine these results into ONE well-formatted response.
+ORCHESTRATOR_SYNTHESIS_PROMPT = """You are a helpful financial assistant. Combine these results into ONE well-formatted response.
 
-User's Question: {{query}}
+User's Question: {query}
 
 Results:
-{{results_text}}
+{results_text}
+{{ ... }}
 
 ### RESPONSE FORMATTING (CHOOSE WISELY):
 

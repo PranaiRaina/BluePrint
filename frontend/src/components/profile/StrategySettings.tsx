@@ -90,7 +90,7 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
             });
             if (res.ok) {
                 setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
+                setTimeout(() => { setSaved(false); }, 2000);
             }
         } catch (e) {
             console.error('Failed to save profile:', e);
@@ -104,12 +104,12 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
         if (loading) return;
         const timeoutId = setTimeout(() => {
             // Validate word count before saving
-            const words = (profile.strategy_notes || '').trim().split(/\s+/).filter(Boolean).length;
+            const words = (profile.strategy_notes ?? '').trim().split(/\s+/).filter(Boolean).length;
             if (words <= 150) {
                 void saveProfile(profile);
             }
         }, 800);
-        return () => clearTimeout(timeoutId);
+        return () => { clearTimeout(timeoutId); };
     }, [profile, loading, saveProfile]);
 
     const updateProfile = (updates: Partial<UserProfile>) => {
@@ -158,17 +158,18 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
             {/* Risk Level Slider */}
             <div className="bg-white/5 rounded-xl p-5 border border-white/5">
                 <div className="flex items-center justify-between mb-4">
-                    <span className="text-white font-medium">Risk Tolerance</span>
+                    <span className="text-white font-medium" id="risk-label">Risk Tolerance</span>
                     <span className={`font-semibold ${getRiskColor(profile.risk_level)}`}>
                         {getRiskLabel(profile.risk_level)} ({profile.risk_level}%)
                     </span>
                 </div>
                 <input
+                    aria-labelledby="risk-label"
                     type="range"
                     min="0"
                     max="100"
                     value={profile.risk_level}
-                    onChange={(e) => updateProfile({ risk_level: parseInt(e.target.value) })}
+                    onChange={(e) => { updateProfile({ risk_level: parseInt(e.target.value) }); }}
                     className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary"
                 />
                 <div className="flex justify-between text-xs text-slate-500 mt-2">
@@ -190,7 +191,7 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
                             <button
                                 key={obj.value}
                                 type="button"
-                                onClick={() => updateProfile({ objective: obj.value })}
+                                onClick={() => { updateProfile({ objective: obj.value }); }}
                                 className={`p-4 rounded-xl border transition-all text-left ${isActive
                                     ? 'bg-primary/10 border-primary/50 text-white'
                                     : 'bg-white/5 border-white/5 text-slate-300 hover:border-white/20'
@@ -209,16 +210,17 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
             <div className="grid md:grid-cols-2 gap-4">
                 {/* Net Worth */}
                 <div className="bg-white/5 rounded-xl p-5 border border-white/5">
-                    <label className="text-white font-medium block mb-3">
+                    <label htmlFor="net-worth-input" className="text-white font-medium block mb-3">
                         <DollarSign className="w-4 h-4 inline mr-2" />
                         Approximate Net Worth
                     </label>
                     <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                         <input
+                            id="net-worth-input"
                             type="number"
                             value={profile.net_worth ?? ''}
-                            onChange={(e) => updateProfile({ net_worth: e.target.value ? parseFloat(e.target.value) : null })}
+                            onChange={(e) => { updateProfile({ net_worth: e.target.value ? parseFloat(e.target.value) : null }); }}
                             placeholder="Optional"
                             className="w-full bg-slate-800/50 border border-white/10 rounded-lg pl-8 pr-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-primary/50"
                         />
@@ -228,13 +230,14 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
 
                 {/* Tax Status */}
                 <div className="bg-white/5 rounded-xl p-5 border border-white/5">
-                    <label className="text-white font-medium block mb-3">
+                    <label htmlFor="tax-status-select" className="text-white font-medium block mb-3">
                         <FileText className="w-4 h-4 inline mr-2" />
                         Primary Account Type
                     </label>
                     <select
+                        id="tax-status-select"
                         value={profile.tax_status}
-                        onChange={(e) => updateProfile({ tax_status: e.target.value })}
+                        onChange={(e) => { updateProfile({ tax_status: e.target.value }); }}
                         className="w-full bg-slate-800/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary/50"
                     >
                         {TAX_STATUSES.map(status => (
@@ -250,21 +253,22 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
             {/* Strategy Notes (The "Brain") */}
             <div className="bg-white/5 rounded-xl p-5 border border-white/5">
                 <div className="flex items-center justify-between mb-3">
-                    <label className="text-white font-medium">
+                    <label htmlFor="strategy-notes" className="text-white font-medium">
                         <FileText className="w-4 h-4 inline mr-2" />
                         Strategy Notes (The "Brain")
                     </label>
-                    <span className={`text-xs ${(profile.strategy_notes || '').trim().split(/\s+/).filter(Boolean).length > 150 ? 'text-red-400' : 'text-slate-500'}`}>
-                        {(profile.strategy_notes || '').trim().split(/\s+/).filter(Boolean).length} / 150 words
+                    <span className={`text-xs ${(profile.strategy_notes ?? '').trim().split(/\s+/).filter(Boolean).length > 150 ? 'text-red-400' : 'text-slate-500'}`}>
+                        {(profile.strategy_notes ?? '').trim().split(/\s+/).filter(Boolean).length} / 150 words
                     </span>
                 </div>
                 <textarea
-                    value={profile.strategy_notes || ''}
-                    onChange={(e) => updateProfile({ strategy_notes: e.target.value })}
+                    id="strategy-notes"
+                    value={profile.strategy_notes ?? ''}
+                    onChange={(e) => { updateProfile({ strategy_notes: e.target.value }); }}
                     placeholder="Describe your specific investment philosophy, sectors to avoid, or unique constraints..."
                     rows={4}
                     className={`w-full bg-slate-800/50 border rounded-lg p-3 text-white placeholder-slate-500 focus:outline-none transition-colors
-                        ${(profile.strategy_notes || '').trim().split(/\s+/).filter(Boolean).length > 150
+                        ${(profile.strategy_notes ?? '').trim().split(/\s+/).filter(Boolean).length > 150
                             ? 'border-red-500/50 focus:border-red-500'
                             : 'border-white/10 focus:border-primary/50'
                         }`}

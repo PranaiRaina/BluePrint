@@ -41,8 +41,9 @@ docker-compose.override.yml
 # Logs
 *.log
 
-# Local DB
-chat_history.db
 
 # Uploads
 ManagerAgent/uploads/
+
+# Agent
+.agent/

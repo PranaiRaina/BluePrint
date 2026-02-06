@@ -35,19 +35,18 @@ const GlassCard: React.FC<GlassCardProps> = ({
 
     useEffect(() => {
         const fetchSparkline = async () => {
-            if (!session || !ticker) return;
+            if (!ticker) return;
             try {
                 const data = await agentService.getStockData(ticker.toUpperCase(), session, '1d');
-                if (data && data.candles) {
-                    const values = data.candles.map(c => c.value);
-                    const slice = values.slice(-24);
-                    setSparkData(slice.length > 0 ? slice : values);
-                    setLiveData({
-                        currentPrice: data.currentPrice,
-                        change: data.change,
-                        changePercent: data.changePercent
-                    });
-                }
+
+                const values = data.candles.map(c => c.value);
+                const slice = values.slice(-24);
+                setSparkData(slice.length > 0 ? slice : values);
+                setLiveData({
+                    currentPrice: data.currentPrice,
+                    change: data.change,
+                    changePercent: data.changePercent
+                });
             } catch (e) {
                 console.error("Sparkline fetch failed", e);
             }
@@ -63,7 +62,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
             }
         };
         if (showMenu) document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => { document.removeEventListener('mousedown', handleClickOutside); };
     }, [showMenu]);
 
     const normalizedBars = React.useMemo(() => {
@@ -170,7 +169,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                                 key={i}
                                 className="w-full rounded-t-sm transition-all duration-500"
                                 style={{
-                                    height: `${height}%`,
+                                    height: `${height.toFixed(1)}%`,
                                     backgroundColor: isPositive ? color : '#f43f5e',
                                     opacity: 0.6 + (i / normalizedBars.length) * 0.4
                                 }}

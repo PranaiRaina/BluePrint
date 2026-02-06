@@ -75,6 +75,33 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
         void fetchHoldings();
     }, [session]);
 
+    // Carousel Navigation Logic
+    const handleNavigate = React.useCallback((direction: 'next' | 'prev') => {
+        if (!selectedItem || verifiedItems.length === 0) return;
+        const currentIndex = verifiedItems.findIndex(i => i.id === selectedItem.id);
+        if (currentIndex === -1) return;
+
+        let newIndex;
+        if (direction === 'next') {
+            newIndex = (currentIndex + 1) % verifiedItems.length;
+        } else {
+            newIndex = (currentIndex - 1 + verifiedItems.length) % verifiedItems.length;
+        }
+        setSelectedItem(verifiedItems[newIndex]);
+    }, [selectedItem, verifiedItems]);
+
+    // Keyboard support for carousel
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!selectedItem) return;
+            if (e.key === 'ArrowRight') handleNavigate('next');
+            if (e.key === 'ArrowLeft') handleNavigate('prev');
+            if (e.key === 'Escape') setSelectedItem(null);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => { window.removeEventListener('keydown', handleKeyDown); };
+    }, [selectedItem, handleNavigate]);
+
     const handleConfirm = async (itemId: string) => {
         try {
             const token = session.access_token;
@@ -274,32 +301,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
     };
 
 
-    // Carousel Navigation Logic
-    const handleNavigate = (direction: 'next' | 'prev') => {
-        if (!selectedItem || verifiedItems.length === 0) return;
-        const currentIndex = verifiedItems.findIndex(i => i.id === selectedItem.id);
-        if (currentIndex === -1) return;
 
-        let newIndex;
-        if (direction === 'next') {
-            newIndex = (currentIndex + 1) % verifiedItems.length;
-        } else {
-            newIndex = (currentIndex - 1 + verifiedItems.length) % verifiedItems.length;
-        }
-        setSelectedItem(verifiedItems[newIndex]);
-    };
-
-    // Keyboard support for carousel
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (!selectedItem) return;
-            if (e.key === 'ArrowRight') handleNavigate('next');
-            if (e.key === 'ArrowLeft') handleNavigate('prev');
-            if (e.key === 'Escape') setSelectedItem(null);
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => { window.removeEventListener('keydown', handleKeyDown); };
-    }, [selectedItem, verifiedItems]);
 
     const scrollToSection = (sectionId: string, ref: React.RefObject<HTMLDivElement>) => {
         setActiveSection(sectionId);
@@ -715,21 +717,21 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
-                        onClick={() => setDeleteConfirmTicker(null)}
+                        onClick={() => { setDeleteConfirmTicker(null); }}
                     >
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-white/10"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); }}
                         >
                             <h3 className="text-xl font-bold text-white mb-2">Delete {deleteConfirmTicker}?</h3>
                             <p className="text-slate-400 text-sm mb-6">This will remove all shares of {deleteConfirmTicker} from your portfolio. This action cannot be undone.</p>
                             <div className="flex gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => setDeleteConfirmTicker(null)}
+                                    onClick={() => { setDeleteConfirmTicker(null); }}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 transition-colors"
                                 >
                                     Cancel
@@ -762,7 +764,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-white/10"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); }}
                         >
                             <h3 className="text-xl font-bold text-white mb-4">Edit {editingTicker}</h3>
 
@@ -770,7 +772,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
                             <div className="flex bg-white/5 rounded-xl p-1 mb-5">
                                 <button
                                     type="button"
-                                    onClick={() => setEditMode('add')}
+                                    onClick={() => { setEditMode('add'); }}
                                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'add'
                                         ? 'bg-emerald-500/20 text-emerald-400'
                                         : 'text-slate-400 hover:text-white'
@@ -780,7 +782,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setEditMode('remove')}
+                                    onClick={() => { setEditMode('remove'); }}
                                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${editMode === 'remove'
                                         ? 'bg-red-500/20 text-red-400'
                                         : 'text-slate-400 hover:text-white'
@@ -797,7 +799,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session, onViewAnalys
                                 <input
                                     type="number"
                                     value={editShares}
-                                    onChange={(e) => setEditShares(e.target.value)}
+                                    onChange={(e) => { setEditShares(e.target.value); }}
                                     placeholder="0"
                                     min="0"
                                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-primary/50"

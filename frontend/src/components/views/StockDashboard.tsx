@@ -20,7 +20,6 @@ interface StockDashboardProps {
 
 const StockDashboard: React.FC<StockDashboardProps> = ({ session, ticker, embedded = false, userInfo }) => {
     const [stockData, setStockData] = useState<StockData | null>(null);
-    const [hoverData, setHoverData] = useState<{ open: number; high: number; low: number; value: number } | null>(null);
     const [loading, setLoading] = useState(false);
     const [timeRange, setTimeRange] = useState("3m");
 
@@ -204,9 +203,9 @@ const StockDashboard: React.FC<StockDashboardProps> = ({ session, ticker, embedd
             {stockData && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     {[
-                        { label: 'Open', value: `$${(hoverData?.open ?? stockData.open).toFixed(2)}` },
-                        { label: 'High', value: `$${(hoverData?.high ?? stockData.high).toFixed(2)}` },
-                        { label: 'Low', value: `$${(hoverData?.low ?? stockData.low).toFixed(2)}` },
+                        { label: 'Open', value: `$${(stockData.open).toFixed(2)}` },
+                        { label: 'High', value: `$${(stockData.high).toFixed(2)}` },
+                        { label: 'Low', value: `$${(stockData.low).toFixed(2)}` },
                         { label: 'Prev Close', value: `$${stockData.previousClose.toFixed(2)}` },
                     ].map((stat, i) => (
                         <div key={i} className="glass-card p-4 text-center border border-white/5 bg-white/5">

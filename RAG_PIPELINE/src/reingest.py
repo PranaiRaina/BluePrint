@@ -1,5 +1,4 @@
 import asyncio
-import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from RAG_PIPELINE.src.ingestion import process_pdf_scoped
@@ -28,7 +27,7 @@ async def reingest_all_documents():
         # Using list() on root to find folders (which represent user_ids)
         root_list = supabase.storage.from_(bucket_name).list()
         
-        user_folders = [item['name'] for item in root_list if item['id'] is None] # Folders often have id=None or metadata indicating folder
+        # user_folders = [item['name'] for item in root_list if item['id'] is None]
         # Fallback: Just try to recursivly list or assume top level names are user_ids if they look like UUIDs
         # A safer way if structure is known: 
         # The app uploads to: user_id/filename.pdf
@@ -64,7 +63,7 @@ async def reingest_all_documents():
                     
                     # Process (Chunk -> Embed -> Store)
                     # process_pdf_scoped expects bytes
-                    print(f"  ⚙️  Processing...")
+                    print("  ⚙️  Processing...")
                     result = await process_pdf_scoped(filename, data, user_id)
                     print(f"  ✅  {result}")
                     total_processed += 1
@@ -77,7 +76,7 @@ async def reingest_all_documents():
         print(f"Global Error during re-ingestion: {e}")
 
     print("\n------------------------------------------------")
-    print(f"🎉 Re-ingestion Complete.")
+    print("🎉 Re-ingestion Complete.")
     print(f"✅ Success: {total_processed}")
     print(f"❌ Failed:  {total_errors}")
     print("------------------------------------------------")
