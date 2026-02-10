@@ -21,7 +21,6 @@ from ManagerAgent.database import get_db
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
-<<<<<<< HEAD
 from ManagerAgent.profile_engine import UserProfile, InvestmentObjective, TaxStatus, distill_profile
 from CalcAgent.src.utils import run_with_retry
 # Import GeneralAgent for fallback
@@ -62,6 +61,7 @@ app = FastAPI(
 )
 
 # Include Routers
+app.include_router(paper_trader_router)
 
 
 # --- Security & Precautions ---

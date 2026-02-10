@@ -105,7 +105,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                         setMessages(prev => {
                             const lastMsg = prev[prev.length - 1];
                             if (lastMsg.role === 'ai') {
-<<<<<<< HEAD
                                 // Final clean check with robust regex
                                 const legalRegex = /(<<|&lt;&lt;)\s*LEGAL_DISCLAIMER\s*(>>|&gt;&gt;)/gi;
                                 let finalContent = streamContentRef.current;
@@ -114,9 +113,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                     hasDisclaimerRef.current = true;
                                     finalContent = finalContent.replace(legalRegex, "");
                                 }
-
-=======
->>>>>>> 7b738ef (Removed Live Paper Trader, simplified UI to Backtester only. Fixed import errors in TradingAgents.)
                                 return [
                                     ...prev.slice(0, -1),
                                     {
