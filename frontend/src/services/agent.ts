@@ -51,6 +51,44 @@ type StreamEvent =
     | { type: 'error'; content: string }
     | { type: 'end' };
 
+export interface Portfolio {
+    id: string;
+    name: string;
+    cash_balance: number;
+    total_equity: number;
+    total_value: number;
+    day_change: number;
+    day_change_percent: number;
+    is_active: boolean;
+}
+
+export interface Position {
+    ticker: string;
+    quantity: number;
+    avg_cost: number;
+    current_price: number;
+    market_value: number;
+    unrealized_pl: number;
+    unrealized_pl_percent: number;
+}
+
+export interface Transaction {
+    id: string;
+    portfolio_id: string;
+    ticker: string;
+    type: 'BUY' | 'SELL';
+    quantity: number;
+    price_per_share: number;
+    executed_at: string;
+    reasoning?: string;
+}
+
+export interface PortfolioDetails {
+    overview: Portfolio;
+    positions: Position[];
+    transactions: Transaction[];
+}
+
 export const agentService = {
     /**
      * Send a query to the Manager Agent.
@@ -430,87 +468,4 @@ export const agentService = {
             return false;
         }
     },
-
-    // --- Paper Trader ---
-
-    getPortfolios: async (session: Session | null): Promise<any[]> => {
-        try {
-            const token = session?.access_token;
-            const headers: HeadersInit = {};
-            if (token) headers.Authorization = `Bearer ${token}`;
-
-            const response = await fetch(`${API_Base}/paper-trader/portfolios`, {
-                method: 'GET',
-                headers
-            });
-
-            if (!response.ok) return [];
-            return await response.json();
-        } catch (error) {
-            console.error("Fetch Portfolios Error:", error);
-            return [];
-        }
-    },
-
-    createPortfolio: async (name: string, session: Session | null): Promise<any> => {
-        try {
-            const token = session?.access_token;
-            const headers: HeadersInit = { 'Content-Type': 'application/json' };
-            if (token) headers.Authorization = `Bearer ${token}`;
-
-            const response = await fetch(`${API_Base}/paper-trader/portfolios`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ name })
-            });
-
-            if (!response.ok) throw new Error("Failed to create portfolio");
-            return await response.json();
-        } catch (error) {
-            console.error("Create Portfolio Error:", error);
-            return null;
-        }
-    },
-
-    getPortfolioDetails: async (portfolioId: string, session: Session | null): Promise<any> => {
-        try {
-            const token = session?.access_token;
-            const headers: HeadersInit = {};
-            if (token) headers.Authorization = `Bearer ${token}`;
-
-            const response = await fetch(`${API_Base}/paper-trader/portfolios/${portfolioId}`, {
-                method: 'GET',
-                headers
-            });
-
-            if (!response.ok) return null;
-            return await response.json();
-        } catch (error) {
-            console.error("Fetch Portfolio Details Error:", error);
-            return null;
-        }
-    },
-
-    executeTrade: async (portfolioId: string, ticker: string, action: 'BUY' | 'SELL', quantity: number, session: Session | null): Promise<any> => {
-        try {
-            const token = session?.access_token;
-            const headers: HeadersInit = { 'Content-Type': 'application/json' };
-            if (token) headers.Authorization = `Bearer ${token}`;
-
-            const response = await fetch(`${API_Base}/paper-trader/trade`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ portfolio_id: portfolioId, ticker, action, quantity })
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || "Trade failed");
-            }
-            return await response.json();
-        } catch (error) {
-            console.error("Execute Trade Error:", error);
-            throw error;
-        }
-    }
 };

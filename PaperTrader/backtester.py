@@ -1,11 +1,9 @@
 import pandas as pd
 import requests
 import json
-from datetime import datetime
 import asyncio
 import os
 from io import StringIO
-from dotenv import load_dotenv
 
 # Mock Portfolio for Backtesting
 class MockPortfolio:

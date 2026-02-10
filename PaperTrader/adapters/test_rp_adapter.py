@@ -6,8 +6,7 @@ Runs Warren on a month of WMT data to verify the integration works.
 import asyncio
 # import yfinance as yf (Removed)
 import pandas as pd
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 import os
 import sys
 
@@ -70,7 +69,7 @@ async def test_warren_on_wmt():
     print(f"   Date range: {df.index[0].date()} to {df.index[-1].date()}")
 
     # Create Warren
-    print(f"\n🤵 Creating Warren (Value Investor)...")
+    print("\n🤵 Creating Warren (Value Investor)...")
     print(f"   Strategy: {STRATEGIES['Warren'][:100]}...")
     
     warren = create_rp_trader(

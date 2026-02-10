@@ -1,6 +1,5 @@
 from mcp.server.fastmcp import FastMCP
 from PaperTrader.service import paper_trading_service
-import asyncio
 
 # Create an MCP Server named "PaperTrader"
 mcp = FastMCP("PaperTrader")

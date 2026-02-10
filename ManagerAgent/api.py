@@ -21,6 +21,7 @@ from ManagerAgent.database import get_db
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
+<<<<<<< HEAD
 from ManagerAgent.profile_engine import UserProfile, InvestmentObjective, TaxStatus, distill_profile
 from CalcAgent.src.utils import run_with_retry
 # Import GeneralAgent for fallback
@@ -29,6 +30,16 @@ from Auth.dependencies import get_current_user
 
 # Env vars loaded at top of file
 from PaperTrader.router import router as paper_trader_router
+=======
+from supabase import create_client, Client
+from fastapi.responses import StreamingResponse
+import json
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
+from fastapi import UploadFile, File
+
+
+>>>>>>> 7b738ef (Removed Live Paper Trader, simplified UI to Backtester only. Fixed import errors in TradingAgents.)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,7 +72,7 @@ app = FastAPI(
 )
 
 # Include Routers
-app.include_router(paper_trader_router)
+
 
 # --- Security & Precautions ---
 
@@ -254,12 +265,12 @@ def update_session_timestamp(session_id: str):
 @app.post("/api/backtest")
 async def run_backtest(request: dict):
     """
-    Run a simulation on a ticker with REAL-TIME STREAMING.
+    Run a simulation on a ticker with REAL-TIME STREAMING using AI Trading Agents.
     Body: {"ticker": "AAPL", "days": 30}
     Returns: SSE Stream
     """
     try:
-        from PaperTrader.backtester import BacktestEngine
+        from PaperTrader.agent_backtester import AgentBacktestEngine
         from fastapi.responses import StreamingResponse
         import json
         import asyncio
@@ -268,23 +279,9 @@ async def run_backtest(request: dict):
         days = int(request.get("days", 30))
         
         async def event_generator():
-            engine = BacktestEngine(None)
-            # Run the generator in a thread since it's synchronous logic
-            # OR just iterate if it's fast enough. 
-            # Since it has sleeps, we should ideally run it in a thread, 
-            # BUT for simplicity in this MVP, we'll iterate directly.
-            # Warning: This blocks the event loop unless we wrap it.
+            engine = AgentBacktestEngine()
             
-            # Better approach: Use to_thread for the blocking generator?
-            # Iterating a blocking generator is tricky in async.
-            # We'll assume the sleep(1) releases the GIL enough or use a simple loop 
-            # with asyncio.sleep(0) to yield control.
-            
-            # Actually, since stream_llm_simulation has time.sleep(), it IS blocking.
-            # To do this properly without blocking other requests, we should wrap it.
-            # But for this hackathon context, direct iteration is acceptable if single user.
-            
-            async for event in engine.stream_llm_simulation(ticker, days=days, interval="1d"):
+            async for event in engine.stream_agent_simulation(ticker, days=days, interval="1d"):
                 yield f"data: {json.dumps(event)}\n\n"
                 await asyncio.sleep(0) # Yield control to event loop
 
@@ -1222,54 +1219,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8001)
-@app.patch("/api/portfolios/{portfolio_id}/toggle")
-async def toggle_agent_status(portfolio_id: str, request: dict, user=Depends(get_current_user)):
-    """
-    Toggle the autonomous agent on/off.
-    Body: {"is_active": true/false}
-    """
-    try:
-        user_id = user["sub"]
-        from PaperTrader.service import paper_trading_service
-        is_active = request.get("is_active", False)
-        
-        result = paper_trading_service.toggle_agent(user_id, portfolio_id, is_active)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-@app.patch("/api/portfolios/{portfolio_id}")
-async def rename_portfolio(portfolio_id: str, request: dict, user=Depends(get_current_user)):
-    """
-    Rename a portfolio.
-    Body: {"name": "New Name"}
-    """
-    try:
-        user_id = user["sub"]
-        from PaperTrader.service import paper_trading_service
-        new_name = request.get("name")
-        if not new_name:
-             raise HTTPException(status_code=400, detail="Name is required")
-        
-        result = paper_trading_service.rename_portfolio(user_id, portfolio_id, new_name)
-        if not result:
-             raise HTTPException(status_code=404, detail="Portfolio not found")
-        return result
-    except Exception as e:
-        print(f"Error renaming portfolio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/portfolios/{portfolio_id}")
-async def delete_portfolio(portfolio_id: str, user=Depends(get_current_user)):
-    """
-    Delete a portfolio.
-    """
-    try:
-        user_id = user["sub"]
-        from PaperTrader.service import paper_trading_service
-        success = paper_trading_service.delete_portfolio(user_id, portfolio_id)
-        if not success:
-             raise HTTPException(status_code=404, detail="Portfolio not found")
-        return {"status": "success"}
-    except Exception as e:
-        print(f"Error deleting portfolio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

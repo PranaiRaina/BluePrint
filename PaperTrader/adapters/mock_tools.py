@@ -6,8 +6,7 @@ These tools replace the live MCP tools with backtester-aware versions.
 import os
 import json
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 from tavily import TavilyClient
@@ -171,10 +170,11 @@ class FundamentalsTool:
 
     def _fetch_overview(self) -> Dict[str, Any]:
         """Fetch company overview (Sector, Industry, SharesOutstanding)."""
-        if not self.api_key: return {}
+            if not self.api_key: return {}
         try:
+            import httpx
             url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={self.ticker}&apikey={self.api_key}&source=trading_agents"
-            r = requests.get(url)
+            r = httpx.get(url)
             return r.json()
         except Exception:
             return {}
@@ -183,8 +183,9 @@ class FundamentalsTool:
         """Fetch historical quarterly earnings."""
         if not self.api_key: return []
         try:
+            import httpx
             url = f"https://www.alphavantage.co/query?function=EARNINGS&symbol={self.ticker}&apikey={self.api_key}&source=trading_agents"
-            r = requests.get(url)
+            r = httpx.get(url)
             data = r.json()
             return data.get("quarterlyEarnings", [])
         except Exception:
