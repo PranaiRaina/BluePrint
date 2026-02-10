@@ -30,16 +30,6 @@ from Auth.dependencies import get_current_user
 
 # Env vars loaded at top of file
 from PaperTrader.router import router as paper_trader_router
-=======
-from supabase import create_client, Client
-from fastapi.responses import StreamingResponse
-import json
-from psycopg_pool import ConnectionPool
-from psycopg.rows import dict_row
-from fastapi import UploadFile, File
-
-
->>>>>>> 7b738ef (Removed Live Paper Trader, simplified UI to Backtester only. Fixed import errors in TradingAgents.)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
