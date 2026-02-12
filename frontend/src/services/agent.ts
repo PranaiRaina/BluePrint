@@ -51,6 +51,44 @@ type StreamEvent =
     | { type: 'error'; content: string }
     | { type: 'end' };
 
+export interface Portfolio {
+    id: string;
+    name: string;
+    cash_balance: number;
+    total_equity: number;
+    total_value: number;
+    day_change: number;
+    day_change_percent: number;
+    is_active: boolean;
+}
+
+export interface Position {
+    ticker: string;
+    quantity: number;
+    avg_cost: number;
+    current_price: number;
+    market_value: number;
+    unrealized_pl: number;
+    unrealized_pl_percent: number;
+}
+
+export interface Transaction {
+    id: string;
+    portfolio_id: string;
+    ticker: string;
+    type: 'BUY' | 'SELL';
+    quantity: number;
+    price_per_share: number;
+    executed_at: string;
+    reasoning?: string;
+}
+
+export interface PortfolioDetails {
+    overview: Portfolio;
+    positions: Position[];
+    transactions: Transaction[];
+}
+
 export const agentService = {
     /**
      * Send a query to the Manager Agent.
@@ -411,9 +449,6 @@ export const agentService = {
         }
     },
 
-    /**
-     * Delete a session.
-     */
     deleteSession: async (sessionId: string, session: Session | null): Promise<boolean> => {
         try {
             const token = session?.access_token;
@@ -432,5 +467,5 @@ export const agentService = {
             console.error("Delete Session Error:", error);
             return false;
         }
-    }
+    },
 };

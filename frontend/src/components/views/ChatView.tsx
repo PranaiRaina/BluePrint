@@ -113,7 +113,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                     hasDisclaimerRef.current = true;
                                     finalContent = finalContent.replace(legalRegex, "");
                                 }
-
                                 return [
                                     ...prev.slice(0, -1),
                                     {
@@ -143,7 +142,6 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                 hasDisclaimerRef.current = true; // Use the footer even in error if applicable
                                 currentContent = currentContent.replace(legalRegex, "");
                             }
-
                             if (lastMsg.role === 'ai') {
                                 return [
                                     ...prev.slice(0, -1),

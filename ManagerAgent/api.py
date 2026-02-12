@@ -1,4 +1,9 @@
 import os
+from dotenv import load_dotenv
+
+# Load env vars before any other imports that might use them
+load_dotenv()
+
 import uuid
 import json
 import asyncio
@@ -22,9 +27,8 @@ from CalcAgent.src.utils import run_with_retry
 from CalcAgent.src.agent import financial_agent, general_agent
 from Auth.dependencies import get_current_user
 
-from dotenv import load_dotenv
-# Load env vars before app/client init
-load_dotenv()
+# Env vars loaded at top of file
+from PaperTrader.router import router as paper_trader_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +59,10 @@ app = FastAPI(
     title="Financial Calculation Agent API",
     lifespan=lifespan
 )
+
+# Include Routers
+app.include_router(paper_trader_router)
+
 
 # --- Security & Precautions ---
 
@@ -242,6 +250,37 @@ def update_session_timestamp(session_id: str):
     except Exception as e:
         print(f"Error updating session timestamp: {e}")
 
+
+# --- Backtesting Endpoint ---
+@app.post("/api/backtest")
+async def run_backtest(request: dict):
+    """
+    Run a simulation on a ticker with REAL-TIME STREAMING using AI Trading Agents.
+    Body: {"ticker": "AAPL", "days": 30}
+    Returns: SSE Stream
+    """
+    try:
+        from PaperTrader.agent_backtester import AgentBacktestEngine
+        from fastapi.responses import StreamingResponse
+        import json
+        import asyncio
+        
+        ticker = request.get("ticker", "AAPL")
+        days = int(request.get("days", 30))
+        
+        async def event_generator():
+            engine = AgentBacktestEngine()
+            
+            async for event in engine.stream_agent_simulation(ticker, days=days, interval="1d"):
+                yield f"data: {json.dumps(event)}\n\n"
+                await asyncio.sleep(0) # Yield control to event loop
+
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Data Models ---
 
@@ -1170,3 +1209,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8001)
+

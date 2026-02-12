@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Home, Database, TrendingUp, LogOut, ChevronDown, User } from 'lucide-react';
+import { Home, Database, TrendingUp, LogOut, ChevronDown, User, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 interface NavbarProps {
-    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics';
-    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics') => void;
+    activeTab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics' | 'simulation';
+    setActiveTab: (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics' | 'simulation') => void;
     session: Session | null;
 }
 
@@ -17,7 +17,8 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
     const tabs = [
         { id: 'vault', label: 'Vault', icon: Database },
         { id: 'overview', label: 'Home', icon: Home },
-        { id: 'stocks', label: 'Stock Analytics', icon: TrendingUp },
+        { id: 'stocks', label: 'Analytics', icon: TrendingUp },
+        { id: 'simulation', label: 'Paper Trader', icon: Activity },
     ];
 
     const handleSignOut = async () => {
