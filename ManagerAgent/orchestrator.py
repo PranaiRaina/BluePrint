@@ -100,6 +100,7 @@ AGENT FINDINGS:
 
 INSTRUCTIONS:
 - Integrate the findings logically.
+- **CITATIONS**: Use the links provided in the AGENT FINDINGS to cite your sources inline. Format: `[🔗](url)`.
 - If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
 - Apply the user profile directives to adjust your tone and recommendations.
 - Maintain a helpful, analytical tone.
@@ -150,6 +151,7 @@ AGENT FINDINGS:
 
 INSTRUCTIONS:
 - Integrate the findings logically.
+- **CITATIONS**: Use the links provided in the AGENT FINDINGS to cite your sources inline. Format: `[🔗](url)`.
 - If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
 - Apply the user profile directives to adjust your tone and recommendations.
 - Maintain a helpful, analytical tone.

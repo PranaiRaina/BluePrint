@@ -170,7 +170,7 @@ class FundamentalsTool:
 
     def _fetch_overview(self) -> Dict[str, Any]:
         """Fetch company overview (Sector, Industry, SharesOutstanding)."""
-            if not self.api_key: return {}
+        if not self.api_key: return {}
         try:
             import httpx
             url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={self.ticker}&apikey={self.api_key}&source=trading_agents"
@@ -362,7 +362,9 @@ class TavilySearchTool:
             if published_date_str:
                 try:
                     # Try parsing ISO format
-                    pub_date = datetime.fromisoformat(published_date_str.replace("Z", "+00:00"))
+                    # Handle Z for UTC and potential fractional seconds if needed
+                    date_str = published_date_str.replace("Z", "+00:00")
+                    pub_date = datetime.fromisoformat(date_str)
                     if pub_date.date() > self.current_date.date():
                         continue  # Skip future articles
                 except (ValueError, TypeError):

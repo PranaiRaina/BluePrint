@@ -297,6 +297,8 @@ class AgentEngine:
         4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
         5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
         6. Do not mention "Knowledge Cutoff".
+7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
+7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
         
         7.  **SCORING RULES (CRITICAL):**
             - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
@@ -380,6 +382,8 @@ class AgentEngine:
         4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
         5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
         6. Do not mention "Knowledge Cutoff".
+        
+        7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
         
         7.  **SCORING RULES (CRITICAL):**
             - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
