@@ -68,9 +68,9 @@ class StockstatsUtils:
                 data = data.reset_index()
                 data.to_csv(data_file, index=False)
 
+            data = data.set_index("Date")
             df = wrap(data)
-            df = wrap(data)
-             # df["Date"] = df["Date"].dt.strftime("%Y-%m-%d") # REMOVED: potentially unsafe
+            # Ensure curr_date matching works with DatetimeIndex
             curr_date_dt = pd.to_datetime(curr_date) # Ensure timestamp matching
 
         df[indicator]  # trigger calculation

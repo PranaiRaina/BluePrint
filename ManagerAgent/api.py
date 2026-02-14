@@ -1205,6 +1205,104 @@ async def update_user_profile(body: UpdateProfileRequest, user: dict = Depends(g
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# Stock Report Generation Endpoints
+# =============================================================================
+
+@app.get("/v1/reports/{ticker}")
+async def get_report_endpoint(ticker: str, user: dict = Depends(get_current_user)):
+    """Get cached analyst report for a ticker (today's date)."""
+    from ManagerAgent.reports_db import get_report
+    
+    user_id = user.get("sub", "anonymous")
+    report = get_report(user_id, ticker.upper())
+    
+    if report is None:
+        raise HTTPException(status_code=404, detail="No report found for today. Generate one first.")
+    
+    return report
+
+
+@app.post("/v1/reports/{ticker}")
+async def generate_report_endpoint(ticker: str, force: bool = False, user: dict = Depends(get_current_user)):
+    """
+    Generate analyst reports for a ticker using the TradingAgents pipeline.
+    Streams progress updates via SSE, then returns the final report.
+    """
+    from ManagerAgent.reports_db import get_report, save_report
+    from datetime import date
+    
+    user_id = user.get("sub", "anonymous")
+    today = date.today().isoformat()
+    
+    # Check cache first (skip if force regeneration)
+    cached = get_report(user_id, ticker.upper(), today) if not force else None
+    if cached:
+        async def cached_stream():
+            yield json.dumps({"type": "status", "content": "📋 Report already generated today, returning cached version..."}) + "\n"
+            yield json.dumps({"type": "report", "content": cached}) + "\n"
+        return StreamingResponse(cached_stream(), media_type="application/x-ndjson")
+    
+    async def event_generator():
+        try:
+            yield json.dumps({"type": "status", "content": "🚀 Initializing AI Analyst Pipeline..."}) + "\n"
+            
+            # Import and initialize the graph (analyst-only mode)
+            from PaperTrader.TradingAgents.graph.trading_graph import TradingAgentsGraph
+            
+            graph = TradingAgentsGraph(
+                selected_analysts=["market", "social", "news", "fundamentals"],
+                debug=False,
+            )
+            
+            # Run analysts in a thread to not block the event loop
+            import asyncio
+            
+            loop = asyncio.get_event_loop()
+            
+            # We need to collect results from the generator in a thread
+            def run_analysts():
+                results = []
+                for step in graph.run_analysts_only(ticker.upper(), today):
+                    results.append(step)
+                return results
+            
+            steps = await loop.run_in_executor(None, run_analysts)
+            
+            # Stream the progress steps
+            final_reports = None
+            for step_name, is_final, reports in steps:
+                if is_final and reports:
+                    final_reports = reports
+                yield json.dumps({"type": "status", "content": step_name}) + "\n"
+            
+            if final_reports:
+                # Save to SQLite cache
+                save_report(user_id, ticker.upper(), final_reports, today)
+                
+                # Return the full report
+                report_data = {
+                    "user_id": user_id,
+                    "ticker": ticker.upper(),
+                    "report_date": today,
+                    "market_report": final_reports.get("market_report", ""),
+                    "news_report": final_reports.get("news_report", ""),
+                    "fundamentals_report": final_reports.get("fundamentals_report", ""),
+                    "sentiment_report": final_reports.get("sentiment_report", ""),
+                }
+                yield json.dumps({"type": "report", "content": report_data}) + "\n"
+            else:
+                yield json.dumps({"type": "error", "content": "Failed to generate reports"}) + "\n"
+                
+        except Exception as e:
+            print(f"Report generation error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+    
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
 if __name__ == "__main__":
     import uvicorn
 

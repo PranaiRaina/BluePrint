@@ -11,7 +11,7 @@ import ChatView from '../components/views/ChatView';
 import UserProfileView from '../components/views/UserProfileView';
 import StockAnalyticsView from '../components/views/StockAnalyticsView';
 import PortfolioAnalysisView from '../components/views/PortfolioAnalysisView';
-import PaperTraderView from '../components/views/PaperTraderView';
+import StocksView from '../components/views/StocksView';
 import Typewriter from '../components/ui/Typewriter';
 
 import type { Session } from '@supabase/supabase-js';
@@ -308,18 +308,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             </motion.div>
                         )}
 
-                        {/* --- Paper Trader View --- */}
-                        {activeTab === 'simulation' && (
-                            <motion.div
-                                key="simulation"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -20 }}
-                                className="w-full"
-                            >
-                                <PaperTraderView session={session} />
-                            </motion.div>
-                        )}
+                        {/* --- Stocks View --- */}
+                        {/* NOTE: Removed from AnimatePresence so report generation persists across tab switches */}
+
                     </AnimatePresence >
 
                     {/* --- Chat View (Persistent) --- */}
@@ -355,6 +346,10 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                             setChatKey(prev => prev + 1);
                             setActiveTab('chat');
                         }} onViewAnalysis={() => { setActiveTab('analytics'); }} />}
+                    </div>
+
+                    <div className={`w-full h-full ${activeTab === 'simulation' ? 'block' : 'hidden'}`}>
+                        <StocksView session={session} onViewAnalysis={() => { setActiveTab('analytics'); }} />
                     </div>
 
                     <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>

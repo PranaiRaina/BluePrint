@@ -46,7 +46,7 @@ const LiveMessage: React.FC<LiveMessageProps> = ({ contentRef, isStreaming }) =>
     }, [isStreaming, contentRef]);
 
     return (
-        <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-code:text-primary/90">
+        <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-code:text-primary/90 prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline hover:prose-a:text-blue-300">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {displayedContent}
             </ReactMarkdown>

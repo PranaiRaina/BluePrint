@@ -139,6 +139,7 @@ const StrategySettings: React.FC<StrategySettingsProps> = ({ session }) => {
                     <div>
                         <h3 className="text-lg font-semibold text-white">Strategy Profile</h3>
                         <p className="text-sm text-slate-400">Personalize your AI advisor's recommendations</p>
+                        <p className="text-xs text-slate-500 mt-1">These preferences currently apply only to the general chatbot, not to stock-specific reports and recommendations.</p>
                     </div>
                 </div>
                 {saving && (

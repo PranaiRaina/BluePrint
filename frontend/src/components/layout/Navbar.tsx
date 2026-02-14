@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Home, Database, TrendingUp, LogOut, ChevronDown, User, Activity } from 'lucide-react';
+import { Home, Database, TrendingUp, LogOut, ChevronDown, User, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
@@ -18,7 +18,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, session }) => 
         { id: 'vault', label: 'Vault', icon: Database },
         { id: 'overview', label: 'Home', icon: Home },
         { id: 'stocks', label: 'Analytics', icon: TrendingUp },
-        { id: 'simulation', label: 'Paper Trader', icon: Activity },
+        { id: 'simulation', label: 'Stocks', icon: Briefcase },
     ];
 
     const handleSignOut = async () => {

@@ -260,9 +260,8 @@ def _get_stock_stats_bulk(
             data = data.reset_index()
             data.to_csv(data_file, index=False)
         
+        data = data.set_index("Date")
         df = wrap(data)
-        df = wrap(data)
-        # df["Date"] = df["Date"].dt.strftime("%Y-%m-%d") # This line causes errors if Date is index
     
     # Calculate the indicator for all rows at once
     df[indicator]  # This triggers stockstats to calculate the indicator

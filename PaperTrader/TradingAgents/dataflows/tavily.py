@@ -87,9 +87,17 @@ def get_social_news(
             # Strict filtering if date is available
             if published_date:
                 try:
-                    if published_date > end_date:
-                         continue
-                except:
+                    from datetime import datetime
+                    from email.utils import parsedate_to_datetime
+                    # published_date can be RFC 2822 ('Wed, 11 Feb 2026 16:29:25 GMT') or ISO
+                    try:
+                        pub_dt = parsedate_to_datetime(published_date)
+                    except Exception:
+                        pub_dt = datetime.fromisoformat(published_date.replace("Z", "+00:00"))
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                    if pub_dt.replace(tzinfo=None) > end_dt:
+                        continue
+                except Exception:
                     pass
 
             formatted_results.append(f"Title: {title}\nSource: {url}\nDate: {published_date}\nRelevance: {score}\nSummary: {content}\n")

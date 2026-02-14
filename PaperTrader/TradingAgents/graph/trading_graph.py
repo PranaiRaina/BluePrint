@@ -358,3 +358,105 @@ class TradingAgentsGraph:
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""
         return self.signal_processor.process_signal(full_signal)
+
+    def run_analysts_only(self, ticker: str, trade_date: str):
+        """
+        Run only the 4 analyst agents (no researchers, traders, or risk debate).
+        Yields progress tuples: (step_name: str, is_final: bool, reports: dict | None)
+        """
+        from langchain_core.messages import ToolMessage, HumanMessage
+
+        # Import tools for each analyst
+        from TradingAgents.agents.utils.core_stock_tools import get_stock_data
+        from TradingAgents.agents.utils.technical_indicators_tools import get_indicators
+        from TradingAgents.agents.utils.news_data_tools import get_news, get_global_news, get_social_news
+        from TradingAgents.agents.utils.fundamental_data_tools import (
+            get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement
+        )
+
+        # Define analysts: (display_name, factory_fn, tools_list, state_report_key)
+        analyst_configs = [
+            ("Market", create_market_analyst, [get_stock_data, get_indicators], "market_report"),
+            ("News", create_news_analyst, [get_news, get_global_news], "news_report"),
+            ("Fundamentals", create_fundamentals_analyst,
+             [get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement],
+             "fundamentals_report"),
+            ("Social Media", create_social_media_analyst, [get_social_news], "sentiment_report"),
+        ]
+
+        reports = {
+            "market_report": "",
+            "news_report": "",
+            "fundamentals_report": "",
+            "sentiment_report": "",
+        }
+
+        for display_name, factory_fn, tools, report_key in analyst_configs:
+            yield (f"🔄 Running {display_name} Analyst...", False, None)
+
+            # Create the analyst node function
+            analyst_fn = factory_fn(self.quick_thinking_llm)
+
+            # Build a tool lookup map
+            tool_map = {t.name: t for t in tools}
+
+            # Start with fresh messages for each analyst
+            state = {
+                "messages": [HumanMessage(content=ticker)],
+                "company_of_interest": ticker,
+                "trade_date": str(trade_date),
+            }
+
+            max_iterations = 15  # Safety cap to prevent infinite tool loops
+            for _ in range(max_iterations):
+                try:
+                    result = analyst_fn(state)
+                except Exception as e:
+                    yield (f"⚠️ {display_name} Analyst error: {e}", False, None)
+                    break
+
+                # Append the LLM message to state
+                llm_msg = result["messages"][0]
+                state["messages"].append(llm_msg)
+
+                # Check if we got the final report (no more tool calls)
+                if result.get(report_key):
+                    reports[report_key] = result[report_key]
+                    yield (f"✅ {display_name} Analyst complete", False, None)
+                    break
+
+                # Handle tool calls
+                if hasattr(llm_msg, "tool_calls") and llm_msg.tool_calls:
+                    for tc in llm_msg.tool_calls:
+                        tool_name = tc["name"]
+                        tool_args = tc["args"]
+                        tool_fn = tool_map.get(tool_name)
+                        if tool_fn:
+                            try:
+                                tool_result = tool_fn.invoke(tool_args)
+                                state["messages"].append(
+                                    ToolMessage(
+                                        content=str(tool_result),
+                                        tool_call_id=tc["id"],
+                                    )
+                                )
+                            except Exception as e:
+                                state["messages"].append(
+                                    ToolMessage(
+                                        content=f"Tool error: {e}",
+                                        tool_call_id=tc["id"],
+                                    )
+                                )
+                        else:
+                            state["messages"].append(
+                                ToolMessage(
+                                    content=f"Unknown tool: {tool_name}",
+                                    tool_call_id=tc["id"],
+                                )
+                            )
+                else:
+                    # No tool calls and no report — LLM returned empty, break
+                    break
+
+        yield ("✅ All analysts complete", True, reports)
+

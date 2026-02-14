@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, TrendingDown, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, MoreVertical, Pencil, Trash2, FileBarChart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
@@ -17,11 +17,12 @@ export interface GlassCardProps {
     layoutId?: string;
     onEdit?: (ticker: string) => void;
     onDelete?: (ticker: string) => void;
+    onReport?: (ticker: string) => void;
 }
 
 const GlassCard: React.FC<GlassCardProps> = ({
     ticker, name, shares, price, change, value, color = "#10b981",
-    onClick, session, layoutId, onEdit, onDelete
+    onClick, session, layoutId, onEdit, onDelete, onReport
 }) => {
     const [liveData, setLiveData] = useState<{ currentPrice: number; change: number; changePercent: number } | null>(null);
     const [sparkData, setSparkData] = useState<number[]>([]);
@@ -90,6 +91,12 @@ const GlassCard: React.FC<GlassCardProps> = ({
         onDelete?.(ticker);
     };
 
+    const handleReport = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        onReport?.(ticker);
+    };
+
     return (
         <motion.button
             layoutId={layoutId}
@@ -122,6 +129,14 @@ const GlassCard: React.FC<GlassCardProps> = ({
                             transition={{ duration: 0.15 }}
                             className="absolute right-0 mt-1 w-36 bg-slate-900/95 backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl overflow-hidden"
                         >
+                            <button
+                                type="button"
+                                onClick={handleReport}
+                                className="w-full px-3 py-2.5 flex items-center gap-2 text-sm text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
+                            >
+                                <FileBarChart className="w-4 h-4" />
+                                AI Report
+                            </button>
                             <button
                                 type="button"
                                 onClick={handleEdit}
