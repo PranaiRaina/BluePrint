@@ -80,7 +80,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ session }) => {
                             {email.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-white mb-1">Welcome back, Rishi</h2>
+                            <h2 className="text-2xl font-bold text-white mb-1">
+                                Welcome back, {(user.user_metadata.full_name || user.user_metadata.name || email.split('@')[0]).split(' ')[0]}
+                            </h2>
                             <div className="flex items-center gap-2 text-text-secondary mb-3">
                                 <Mail className="w-4 h-4" />
                                 <span>{email}</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Briefcase, FileCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
 import GlassCard from '../profile/GlassCard';
 import PersonalizedAssetView from './PersonalizedAssetView';
@@ -9,6 +10,7 @@ interface StocksViewProps {
     session: Session;
     onAnalyze?: (ticker: string) => void;
     onViewAnalysis?: () => void;
+    isSidebarOpen: boolean;
 }
 
 interface HoldingItem {
@@ -22,7 +24,7 @@ interface HoldingItem {
     status: 'pending' | 'verified';
 }
 
-const StocksView: React.FC<StocksViewProps> = ({ session, onViewAnalysis }) => {
+const StocksView: React.FC<StocksViewProps> = ({ session, onViewAnalysis, isSidebarOpen }) => {
     const [pendingItems, setPendingItems] = useState<HoldingItem[]>([]);
     const [verifiedItems, setVerifiedItems] = useState<HoldingItem[]>([]);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -480,66 +482,80 @@ const StocksView: React.FC<StocksViewProps> = ({ session, onViewAnalysis }) => {
                 </div>
             )}
 
-            {/* Personalized Asset View Carousel Modal */}
-            <AnimatePresence>
-                {selectedItem && (
-                    <>
-                        {/* Backdrop */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
-                            onClick={() => { setSelectedItem(null); }}
-                        />
+            {/* Personalized Asset View Carousel Modal - Portalled to body to escape parent transforms */}
+            {typeof document !== 'undefined' && createPortal(
+                <AnimatePresence>
+                    {selectedItem && (
+                        <>
+                            {/* Backdrop - Now respects sidebar width so sidebar remains visible */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{
+                                    opacity: 1,
+                                    left: isSidebarOpen ? 260 : 64
+                                }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15, ease: "linear" }}
+                                className="fixed top-0 bottom-0 right-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 will-change-auto"
+                                style={{ transform: 'translateZ(0)' }}
+                                onClick={() => { setSelectedItem(null); }}
+                            />
 
-                        {/* Modal Container */}
-                        <motion.div
-                            layoutId={`card-${selectedItem.id}`}
-                            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-                        >
-                            <div className="relative w-full max-w-4xl h-[85vh] pointer-events-auto flex items-start overflow-hidden">
-                                {/* Navigation Arrows */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleNavigate('prev'); }}
-                                    className="absolute -left-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
+                            {/* Modal Container */}
+                            <motion.div
+                                className="fixed top-0 bottom-0 right-0 z-[61] flex items-center justify-center pointer-events-none p-4 will-change-auto"
+                                animate={{
+                                    left: isSidebarOpen ? 260 : 64,
+                                }}
+                                transition={{ duration: 0.15, ease: "linear", type: "tween" }}
+                            >
+                                <motion.div
+                                    layoutId={`card-${selectedItem.id}`}
+                                    className="relative w-full max-w-4xl h-[85vh] pointer-events-auto flex items-start overflow-hidden"
                                 >
-                                    <ChevronLeft className="w-8 h-8 group-hover:-translate-x-0.5 transition-transform" />
-                                </button>
-
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleNavigate('next'); }}
-                                    className="absolute -right-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
-                                >
-                                    <ChevronRight className="w-8 h-8 group-hover:translate-x-0.5 transition-transform" />
-                                </button>
-
-                                {/* Main Card Content */}
-                                <div className="w-full h-full bg-[#0f172a] rounded-3xl overflow-hidden border border-white/10 shadow-2xl flex flex-col relative">
+                                    {/* Navigation Arrows */}
                                     <button
-                                        onClick={() => { setSelectedItem(null); }}
-                                        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/20 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); handleNavigate('prev'); }}
+                                        className="absolute -left-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
                                     >
-                                        <X className="w-5 h-5" />
+                                        <ChevronLeft className="w-8 h-8 group-hover:-translate-x-0.5 transition-transform" />
                                     </button>
 
-                                    <div className="flex-1 overflow-y-auto no-scrollbar">
-                                        <PersonalizedAssetView
-                                            session={session}
-                                            ticker={selectedItem.ticker ?? ''}
-                                            quantity={selectedItem.quantity ?? 0}
-                                            avgPrice={selectedItem.price ?? 0}
-                                            buyDate={selectedItem.buy_date}
-                                            totalPortfolioValue={totalPortfolioValue}
-                                            onClose={() => { setSelectedItem(null); }}
-                                        />
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleNavigate('next'); }}
+                                        className="absolute -right-16 p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-110 transition-all text-white hidden md:block group z-50"
+                                    >
+                                        <ChevronRight className="w-8 h-8 group-hover:translate-x-0.5 transition-transform" />
+                                    </button>
+
+                                    {/* Main Card Content */}
+                                    <div className="w-full h-full bg-[#0f172a] rounded-3xl overflow-hidden border border-white/10 shadow-2xl flex flex-col relative">
+                                        <button
+                                            onClick={() => { setSelectedItem(null); }}
+                                            className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/20 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+
+                                        <div className="flex-1 overflow-y-auto no-scrollbar">
+                                            <PersonalizedAssetView
+                                                session={session}
+                                                ticker={selectedItem.ticker ?? ''}
+                                                quantity={selectedItem.quantity ?? 0}
+                                                avgPrice={selectedItem.price ?? 0}
+                                                buyDate={selectedItem.buy_date}
+                                                totalPortfolioValue={totalPortfolioValue}
+                                                onClose={() => { setSelectedItem(null); }}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+                                </motion.div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* Delete Confirmation Modal */}
             <AnimatePresence>

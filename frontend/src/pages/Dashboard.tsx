@@ -349,7 +349,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     </div>
 
                     <div className={`w-full h-full ${activeTab === 'simulation' ? 'block' : 'hidden'}`}>
-                        <StocksView session={session} onViewAnalysis={() => { setActiveTab('analytics'); }} />
+                        <StocksView session={session} onViewAnalysis={() => { setActiveTab('analytics'); }} isSidebarOpen={!isSidebarCollapsed} />
                     </div>
 
                     <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
@@ -361,7 +361,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                         {activeTab === 'analytics' && (
                             <PortfolioAnalysisView
                                 session={session}
-                                onBack={() => { setActiveTab('profile'); }}
+                                onBack={() => { setActiveTab('simulation'); }}
                             />
                         )}
                     </div>

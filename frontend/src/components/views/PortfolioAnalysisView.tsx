@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, TrendingDown, Wallet, PieChart, BarChart3, Sparkles, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, TrendingUp, TrendingDown, Wallet, PieChart, BarChart3, Sparkles, Loader2, X } from 'lucide-react';
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import type { Session } from '@supabase/supabase-js';
 import { agentService } from '../../services/agent';
+import PersonalizedAssetView from './PersonalizedAssetView';
 
 interface Holding {
     id?: string;
@@ -32,6 +34,7 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
     const [holdings, setHoldings] = useState<Holding[]>([]);
     const [liveData, setLiveData] = useState<Map<string, LiveData>>(new Map());
     const [loading, setLoading] = useState(true);
+    const [selectedHolding, setSelectedHolding] = useState<Holding | null>(null);
 
     // Fetch user's holdings from API
     useEffect(() => {
@@ -345,7 +348,16 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                                     </thead>
                                     <tbody>
                                         {metrics.holdings.map(h => (
-                                            <tr key={h.ticker} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                            <motion.tr
+                                                layoutId={`holding-${h.ticker}`}
+                                                key={h.ticker}
+                                                onClick={() => {
+                                                    // Find original holding object to pass
+                                                    const original = holdings.find(item => item.ticker === h.ticker);
+                                                    if (original) setSelectedHolding(original);
+                                                }}
+                                                className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+                                            >
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: h.color }} />
@@ -361,7 +373,7 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                                                     <span className="text-xs ml-1">({h.pnl >= 0 ? '+' : ''}{h.pnlPercent.toFixed(1)}%)</span>
                                                 </td>
                                                 <td className="text-right px-6 py-4 text-slate-300">{h.weight.toFixed(1)}%</td>
-                                            </tr>
+                                            </motion.tr>
                                         ))}
                                     </tbody>
                                 </table>
@@ -370,6 +382,51 @@ const PortfolioAnalysisView: React.FC<PortfolioAnalysisViewProps> = ({ session, 
                     </div>
                 )}
             </div>
+
+
+            {/* Stock Detail Modal - Portalled */}
+            {
+                typeof document !== 'undefined' && createPortal(
+                    <AnimatePresence>
+                        {selectedHolding && (
+                            <>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4"
+                                    onClick={() => { setSelectedHolding(null); }}
+                                />
+                                <motion.div
+                                    layoutId={`holding-${selectedHolding.ticker}`}
+                                    className="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none p-4"
+                                >
+                                    <div className="relative w-full max-w-4xl h-[85vh] pointer-events-auto flex items-start overflow-hidden bg-[#0f172a] rounded-3xl border border-white/10 shadow-2xl">
+                                        <button
+                                            onClick={() => { setSelectedHolding(null); }}
+                                            className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/20 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                        <div className="flex-1 w-full h-full overflow-y-auto no-scrollbar">
+                                            <PersonalizedAssetView
+                                                session={session}
+                                                ticker={selectedHolding.ticker ?? ''}
+                                                quantity={selectedHolding.quantity ?? 0}
+                                                avgPrice={selectedHolding.price ?? 0}
+                                                buyDate={selectedHolding.buy_date}
+                                                totalPortfolioValue={metrics.totalCurrentValue}
+                                                onClose={() => { setSelectedHolding(null); }}
+                                            />
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )
+            }
         </motion.div >
     );
 };
