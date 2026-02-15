@@ -113,8 +113,8 @@ def retrieve(state: GraphState):
 
     # --- [NEW] Verified Holdings Injection ---
     try:
-        from .local_store import load_holdings
-        verified_holdings = [h for h in load_holdings() if h.get("status") == "verified"]
+        from ManagerAgent.holdings_db import get_holdings
+        verified_holdings = get_holdings(user_id, status="verified")
         
         if verified_holdings:
             print(f"DEBUG [RAG]: Checking {len(verified_holdings)} verified holdings for relevance...")

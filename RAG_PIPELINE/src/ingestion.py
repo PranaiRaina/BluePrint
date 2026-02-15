@@ -104,7 +104,10 @@ def get_supabase_client():
 
 def get_vectorstore():
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004", google_api_key=settings.GOOGLE_API_KEY
+        model="models/gemini-embedding-001",
+        google_api_key=settings.GOOGLE_API_KEY,
+        task_type="retrieval_document",
+        output_dimensionality=768,
     )
     
     client = get_supabase_client()
@@ -123,7 +126,10 @@ def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: f
     """
     try:
         embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004", google_api_key=settings.GOOGLE_API_KEY
+            model="models/gemini-embedding-001",
+            google_api_key=settings.GOOGLE_API_KEY,
+            task_type="retrieval_query",
+            output_dimensionality=768,
         )
         query_vector = embeddings.embed_query(query)
         
@@ -332,11 +338,12 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
             if extracted_holdings:
                 print(f"Extraction Hook Found {len(extracted_holdings)} items: {extracted_holdings}")
                 
-                # Local Store Save (User Requested)
-                from .local_store import save_holding
+                # Save to Supabase holdings table (user-scoped)
+                from ManagerAgent.holdings_db import upsert_holding
                 for item in extracted_holdings:
                     item["source_doc"] = filename
-                    save_holding(item)
+                    item["status"] = "pending"  # Extracted = pending until user confirms
+                    upsert_holding(user_id, item)
                     
         except Exception as e:
             print(f"Extraction Hook Failed: {e}")

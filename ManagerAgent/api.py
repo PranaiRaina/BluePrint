@@ -1000,17 +1000,16 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
 
 
 
-# --- Portfolio endpoints (Local Store for now) ---
+# --- Portfolio endpoints (Supabase Postgres) ---
 
 @app.get("/v1/portfolio/pending")
 async def get_pending_holdings(user: dict = Depends(get_current_user)):
-    """Get pending extracted holdings from local store."""
+    """Get pending extracted holdings for the current user."""
     try:
-        from RAG_PIPELINE.src.local_store import load_holdings
-        items = load_holdings()
-        # Filter for pending items
-        pending = [item for item in items if item.get("status") == "pending"]
-        return {"items": pending}
+        from ManagerAgent.holdings_db import get_holdings
+        user_id = user.get("sub")
+        items = get_holdings(user_id, status="pending")
+        return {"items": items}
     except Exception as e:
         print(f"Error loading pending holdings: {e}")
         return {"items": []}
@@ -1020,26 +1019,27 @@ async def get_pending_holdings(user: dict = Depends(get_current_user)):
 async def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
     """Confirm a pending holding (move to verified status)."""
     try:
-        from RAG_PIPELINE.src.local_store import update_holding_status
-        success = update_holding_status(item_id, "verified")
+        from ManagerAgent.holdings_db import update_holding_status
+        user_id = user.get("sub")
+        success = update_holding_status(user_id, item_id, "verified")
         if not success:
              raise HTTPException(status_code=404, detail="Item not found")
         return {"status": "success", "message": "Holding verified"}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error confirming holding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @app.get("/v1/portfolio/holdings")
 async def get_verified_holdings(user: dict = Depends(get_current_user)):
-    """Get verified holdings from local store."""
+    """Get verified holdings for the current user."""
     try:
-        from RAG_PIPELINE.src.local_store import load_holdings
-        items = load_holdings()
-        # Filter for verified items
-        verified = [item for item in items if item.get("status") == "verified"]
-        return {"items": verified}
+        from ManagerAgent.holdings_db import get_holdings
+        user_id = user.get("sub")
+        items = get_holdings(user_id, status="verified")
+        return {"items": items}
     except Exception as e:
         print(f"Error loading verified holdings: {e}")
         return {"items": []}
@@ -1047,17 +1047,16 @@ async def get_verified_holdings(user: dict = Depends(get_current_user)):
 
 @app.post("/v1/portfolio/holdings")
 async def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_current_user)):
-    """Add a new verified holding manually."""
+    """Add or update a holding for the current user."""
     try:
-        from RAG_PIPELINE.src.local_store import save_holding
-        import uuid
+        from ManagerAgent.holdings_db import upsert_holding
+        user_id = user.get("sub")
         
-        new_item = body.dict()
-        new_item["id"] = f"manual_{str(uuid.uuid4())}"
-        new_item["status"] = "verified"
+        holding_data = body.dict()
+        holding_data["status"] = "verified"
         
-        save_holding(new_item)
-        return {"status": "success", "item": new_item}
+        item = upsert_holding(user_id, holding_data)
+        return {"status": "success", "item": item}
     except Exception as e:
         print(f"Error adding holding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1065,22 +1064,17 @@ async def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_curre
 
 @app.delete("/v1/portfolio/holdings/{ticker}")
 async def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
-    """Delete all holdings for a given ticker."""
+    """Delete all holdings for a given ticker for the current user."""
     try:
-        from RAG_PIPELINE.src.local_store import load_holdings, save_all_holdings
+        from ManagerAgent.holdings_db import delete_holding as db_delete_holding
+        user_id = user.get("sub")
         
-        items = load_holdings()
-        ticker_upper = ticker.upper()
-        
-        # Filter out all items matching this ticker
-        remaining = [i for i in items if (i.get("ticker") or "").upper() != ticker_upper]
-        deleted_count = len(items) - len(remaining)
+        deleted_count = db_delete_holding(user_id, ticker)
         
         if deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"No holdings found for {ticker}")
         
-        save_all_holdings(remaining)
-        return {"status": "success", "deleted": deleted_count, "ticker": ticker_upper}
+        return {"status": "success", "deleted": deleted_count, "ticker": ticker.upper()}
     except HTTPException:
         raise
     except Exception as e:

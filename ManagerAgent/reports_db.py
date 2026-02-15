@@ -1,43 +1,10 @@
 """
-SQLite-based reports database for local development.
-Replace with Supabase Postgres in production.
+Supabase Postgres-backed reports database.
+Uses the shared psycopg connection pool from ManagerAgent.database.
 """
 
-import sqlite3
-import os
-import json
 from datetime import date
-from contextlib import contextmanager
-
-DB_PATH = os.path.join(os.path.dirname(__file__), "reports.db")
-
-
-def _get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
-
-
-def init_reports_db():
-    """Create the stock_reports table if it doesn't exist."""
-    conn = _get_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS stock_reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            ticker TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            market_report TEXT,
-            news_report TEXT,
-            fundamentals_report TEXT,
-            sentiment_report TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, ticker, report_date)
-        )
-    """)
-    conn.commit()
-    conn.close()
+from ManagerAgent.database import get_db
 
 
 def save_report(user_id: str, ticker: str, reports: dict, report_date: str = None):
@@ -45,27 +12,27 @@ def save_report(user_id: str, ticker: str, reports: dict, report_date: str = Non
     if report_date is None:
         report_date = date.today().isoformat()
 
-    conn = _get_connection()
-    conn.execute("""
-        INSERT INTO stock_reports (user_id, ticker, report_date, market_report, news_report, fundamentals_report, sentiment_report)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id, ticker, report_date) DO UPDATE SET
-            market_report = excluded.market_report,
-            news_report = excluded.news_report,
-            fundamentals_report = excluded.fundamentals_report,
-            sentiment_report = excluded.sentiment_report,
-            created_at = CURRENT_TIMESTAMP
-    """, (
-        user_id,
-        ticker.upper(),
-        report_date,
-        reports.get("market_report", ""),
-        reports.get("news_report", ""),
-        reports.get("fundamentals_report", ""),
-        reports.get("sentiment_report", ""),
-    ))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO stock_reports (user_id, ticker, report_date, market_report, news_report, fundamentals_report, sentiment_report)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(user_id, ticker, report_date) DO UPDATE SET
+                    market_report = EXCLUDED.market_report,
+                    news_report = EXCLUDED.news_report,
+                    fundamentals_report = EXCLUDED.fundamentals_report,
+                    sentiment_report = EXCLUDED.sentiment_report,
+                    created_at = now()
+            """, (
+                user_id,
+                ticker.upper(),
+                report_date,
+                reports.get("market_report", ""),
+                reports.get("news_report", ""),
+                reports.get("fundamentals_report", ""),
+                reports.get("sentiment_report", ""),
+            ))
+        conn.commit()
 
 
 def get_report(user_id: str, ticker: str, report_date: str = None) -> dict | None:
@@ -73,50 +40,56 @@ def get_report(user_id: str, ticker: str, report_date: str = None) -> dict | Non
     if report_date is None:
         report_date = date.today().isoformat()
 
-    conn = _get_connection()
-    row = conn.execute("""
-        SELECT * FROM stock_reports
-        WHERE user_id = ? AND ticker = ? AND report_date = ?
-    """, (user_id, ticker.upper(), report_date)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, user_id, ticker, report_date, market_report, news_report,
+                       fundamentals_report, sentiment_report, created_at
+                FROM stock_reports
+                WHERE user_id = %s AND ticker = %s AND report_date = %s
+            """, (user_id, ticker.upper(), report_date))
+            row = cur.fetchone()
 
     if row is None:
         return None
 
     return {
         "id": row["id"],
-        "user_id": row["user_id"],
+        "user_id": str(row["user_id"]),
         "ticker": row["ticker"],
-        "report_date": row["report_date"],
+        "report_date": str(row["report_date"]),
         "market_report": row["market_report"],
         "news_report": row["news_report"],
         "fundamentals_report": row["fundamentals_report"],
         "sentiment_report": row["sentiment_report"],
-        "created_at": row["created_at"],
+        "created_at": str(row["created_at"]),
     }
 
 
 def get_all_reports_for_user(user_id: str) -> list[dict]:
     """Get all reports for a user, newest first."""
-    conn = _get_connection()
-    rows = conn.execute("""
-        SELECT * FROM stock_reports
-        WHERE user_id = ?
-        ORDER BY report_date DESC, created_at DESC
-    """, (user_id,)).fetchall()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, user_id, ticker, report_date, market_report, news_report,
+                       fundamentals_report, sentiment_report, created_at
+                FROM stock_reports
+                WHERE user_id = %s
+                ORDER BY report_date DESC, created_at DESC
+            """, (user_id,))
+            rows = cur.fetchall()
 
     return [
         {
             "id": row["id"],
-            "user_id": row["user_id"],
+            "user_id": str(row["user_id"]),
             "ticker": row["ticker"],
-            "report_date": row["report_date"],
+            "report_date": str(row["report_date"]),
             "market_report": row["market_report"],
             "news_report": row["news_report"],
             "fundamentals_report": row["fundamentals_report"],
             "sentiment_report": row["sentiment_report"],
-            "created_at": row["created_at"],
+            "created_at": str(row["created_at"]),
         }
         for row in rows
     ]
@@ -127,14 +100,10 @@ def delete_report(user_id: str, ticker: str, report_date: str = None):
     if report_date is None:
         report_date = date.today().isoformat()
 
-    conn = _get_connection()
-    conn.execute("""
-        DELETE FROM stock_reports
-        WHERE user_id = ? AND ticker = ? AND report_date = ?
-    """, (user_id, ticker.upper(), report_date))
-    conn.commit()
-    conn.close()
-
-
-# Auto-init on import
-init_reports_db()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM stock_reports
+                WHERE user_id = %s AND ticker = %s AND report_date = %s
+            """, (user_id, ticker.upper(), report_date))
+        conn.commit()
