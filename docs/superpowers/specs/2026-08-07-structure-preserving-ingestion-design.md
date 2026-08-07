@@ -165,9 +165,21 @@ Per page:
    `1.25 * body_size` becomes a heading — `#` above `2 * body_size`, else `##`.
 5. **Emit everything else as positioned cells.** Split a line into cells wherever
    the horizontal gap between consecutive words exceeds 8pt.
-6. **Snap cells to columns.** Cluster cell right edges (`x1`) across the page
-   within a tolerance, and place each cell in its column index, emitting an empty
-   string for columns with no content on that row.
+6. **Snap cells to columns.** Within each run of consecutive multi-column lines,
+   cluster cell right edges (`x1`) within a tolerance; each cluster is a column.
+   Place every cell at its column index, emitting an empty string for columns
+   with no content on that row.
+
+   Cluster **per block, not per page.** A page carries several unrelated tables
+   with different geometry — on the specimen, the summary box's rightmost column
+   sits at `x1=568.8` while the transaction table's Balance column sits at
+   `562.8`. Page-wide clustering would merge two columns that are six points and
+   one table apart.
+
+   Right edge rather than left because financial figures are right-aligned, and
+   because the header word aligns with them: `Credit` ends at 318.8 and so does
+   every credit below it, `Debit` at 438.8, `Balance` at 562.8. That alignment is
+   what lets a column be named rather than merely counted.
 7. **Render.** Lines occupying a single column emit as plain text. Lines
    occupying several emit as a markdown table row. A run of consecutive
    multi-column lines becomes one table, with the first row as its header and a
