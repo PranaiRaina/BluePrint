@@ -176,10 +176,26 @@ Per page:
    `562.8`. Page-wide clustering would merge two columns that are six points and
    one table apart.
 
-   Right edge rather than left because financial figures are right-aligned, and
-   because the header word aligns with them: `Credit` ends at 318.8 and so does
-   every credit below it, `Debit` at 438.8, `Balance` at 562.8. That alignment is
-   what lets a column be named rather than merely counted.
+   **Cluster both edges, not just one.** Columns do not share an alignment:
+   numeric columns are right-aligned and text columns are left-aligned. On the
+   specimen's 16 transaction rows, Description holds `x0=121.2` every time while
+   its `x1` ranges from 180.2 to 248.8; Credit is the mirror image, with `x1`
+   pinned at 318.8 and `x0` scattered. Clustering `x1` alone finds the money
+   columns and misses Description entirely.
+
+   So cluster `x0` and `x1` separately and keep the tight, frequently-hit
+   clusters from each. A cluster on `x0` is a left-anchored column, one on `x1`
+   is right-anchored, and a cell joins the column whose anchor its corresponding
+   edge matches.
+
+   Right-anchored columns also let a column be *named* rather than merely
+   counted: the header word shares the data's right edge — `Credit` ends at
+   318.8, `Debit` at 438.8, `Balance` at 562.8.
+
+   **Snap cells, never words.** Sub-step 5 must run first. `Salary Credit -
+   Northwind Analytics` happens to end at exactly 318.8, the Credit anchor; as a
+   word it would snap into Credit, but as a cell it matches Description on its
+   left edge and lands correctly.
 7. **Render.** Lines occupying a single column emit as plain text. Lines
    occupying several emit as a markdown table row. A run of consecutive
    multi-column lines becomes one table, with the first row as its header and a
@@ -397,6 +413,10 @@ Unit tests, all offline and in the default suite:
 8. A document with no headings still receives per-chunk-varying prefixes via the
    page-number fallback.
 9. `DocumentMetadata` rejects a `doc_type` outside the allowed set.
+10. The Description column is detected despite its right edge varying by row —
+    the regression test for left-anchored columns.
+11. `Salary Credit - Northwind Analytics`, whose text ends exactly on the Credit
+    column's anchor, still lands in Description.
 
 Retrieval quality is measured by the Step 0 harness, not by pytest — baseline
 recorded before Step 1, re-run after Step 6 and after threshold retuning.
