@@ -125,7 +125,6 @@ class AgentEngine:
 
         # 2. Execute
         execution_results = {}
-        charts_data = {}
 
         # Helper to run tools safely (Same as sync)
         async def execute_step(step: PlannerStep):
@@ -142,9 +141,6 @@ class AgentEngine:
                     ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
-                    # Store chart data separately for frontend
-                    if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
@@ -179,14 +175,6 @@ class AgentEngine:
             result = await execute_step(step)
             execution_results[f"step_{i}_{step.tool}"] = result
 
-        # Yield Chart Data if available
-        if charts_data:
-            import json
-            yield {
-                "type": "data",
-                "content": json.dumps({"charts": charts_data})
-            }
-
         # 3. Synthesize (Streaming)
         yield {"type": "status", "content": "Synthesizing recommendation..."}
         async for chunk in self._generate_recommendation_stream(
@@ -210,7 +198,6 @@ class AgentEngine:
 
         # 2. Execute
         execution_results = {}
-        charts_data = {}
 
         # Helper to run tools safely
         async def execute_step(step: PlannerStep):
@@ -227,8 +214,6 @@ class AgentEngine:
                     ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
-                    if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
@@ -262,7 +247,6 @@ class AgentEngine:
             "intent": "dynamic_plan",
             "plan": plan.dict(),
             "analysis": {
-                "charts": charts_data,  # For frontend visualization
                 "results": execution_results,
             },
             "recommendation": recommendation,
