@@ -45,23 +45,100 @@ async def run_calculator(query: str, context: Dict[str, Any] = None) -> str:
         return f"Calculator error: {str(e)}"
 
 
+BRANCH_LABELS = {
+    "rag": "FROM THE USER'S OWN UPLOADED DOCUMENTS",
+    "stock": "FROM LIVE MARKET DATA",
+    "calculator": "FROM THE CALCULATION ENGINE",
+    "general": "FROM GENERAL ANALYSIS",
+}
+
+
 def enrich_query_with_context(query: str, context: Dict[str, Any]) -> str:
-    """Enrich the query with results from previous intent executions."""
-    if not context.get("results"):
+    """Prefix the query with what earlier branches already found.
+
+    EVERY branch that runs after another needs this, not just STOCK. A branch
+    that answers blind will tell the user it has no access to their financial
+    data - and suggest uploading a statement - even when a previous branch just
+    read the answer out of that very statement.
+    """
+    results = context.get("results") or {}
+
+    # dict order is execution order: RAG -> STOCK -> CALCULATOR -> GENERAL
+    parts = [
+        f"--- {BRANCH_LABELS.get(name, name.upper())} ---\n{text}"
+        for name, text in results.items()
+        if text and text.strip()
+    ]
+    if not parts:
         return query
 
-    context_parts = []
+    return (
+        f"{chr(10).join(parts)}\n\n"
+        f"User's Question: {query}\n\n"
+        "IMPORTANT: The findings above were already retrieved for this specific "
+        "user. Treat them as data you have access to and answer from them. Do NOT "
+        "tell the user you have no access to their financial data, and do NOT ask "
+        "them to upload a document that already appears above."
+    )
 
-    if "rag" in context["results"]:
-        context_parts.append(f"USER'S CURRENT HOLDINGS:\n{context['results']['rag']}")
 
-    if "stock" in context["results"]:
-        context_parts.append(f"Stock Analysis: {context['results']['stock']}")
+ORCHESTRATOR_SYNTHESIS_PROMPT = """You are a Master Financial Orchestrator.
+Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
+{persona_section}
+CHAT HISTORY (for context):
+{history}
 
-    if not context_parts:
-        return query
+USER QUERY: {query}
 
-    return f"{chr(10).join(context_parts)}\n\nUser's Question: {query}\n\nIMPORTANT: Consider the user's current holdings when making recommendations."
+AGENT FINDINGS:
+{results_text}
+
+INSTRUCTIONS:
+- Integrate the findings logically.
+- **DOCUMENT DATA IS AUTHORITATIVE**: findings drawn from the user's own uploaded
+  documents are the source of truth. These agents genuinely can read the user's
+  files.
+- **RESOLVE CONFLICTS IN FAVOUR OF DATA**: if one agent supplies a fact and
+  another says it cannot access the user's financial data, use the fact and DROP
+  the disclaimer completely. Do not mention that any agent lacked access, and do
+  not hedge the fact you were given.
+- Never ask the user to upload a document that already appears in the findings.
+- **CITATIONS**: cite sources inline as plain markdown links, written exactly like
+  this with no backticks: [marketbeat.com](https://www.marketbeat.com/stocks/NASDAQ/NVDA)
+  Never wrap a markdown link in backticks - it renders as code and stops working.
+  Only cite real http:// or https:// URLs that appear in the findings; for a
+  document, name the file in prose instead of linking it.
+- Apply the user profile directives to adjust your tone.
+- Maintain a helpful, analytical tone.
+- Do not repeat yourself.
+- Ensure the final output is formatted in clean Markdown.
+"""
+
+
+def _build_synthesis_prompt(
+    query: str, results: Dict[str, str], history: str, user_directives: str
+) -> str:
+    """Shared by the streaming and non-streaming synthesizers."""
+    results_text = "\n\n".join(
+        [
+            f"--- {intent.upper()} RESULT ---\n{result}"
+            for intent, result in results.items()
+            if result
+        ]
+    )
+
+    persona_section = ""
+    if user_directives:
+        persona_section = f"""\n\nUSER PROFILE DIRECTIVES (Apply these to your response style and recommendations):
+{user_directives}
+"""
+
+    return ORCHESTRATOR_SYNTHESIS_PROMPT.format(
+        persona_section=persona_section,
+        history=history,
+        query=query,
+        results_text=results_text,
+    )
 
 
 async def synthesize_response(
@@ -72,41 +149,7 @@ async def synthesize_response(
     if len(results) == 1 and not history and not user_directives:
         return list(results.values())[0]
 
-    results_text = "\n\n".join(
-        [
-            f"--- {intent.upper()} RESULT ---\n{result}"
-            for intent, result in results.items()
-            if result
-        ]
-    )
-
-    # Build persona section if directives exist
-    persona_section = ""
-    if user_directives:
-        persona_section = f"""\n\nUSER PROFILE DIRECTIVES (Apply these to your response style and recommendations):
-{user_directives}
-"""
-
-    prompt = f"""You are a Master Financial Orchestrator. 
-Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
-{persona_section}
-CHAT HISTORY (for context):
-{history}
-
-USER QUERY: {query}
-
-AGENT FINDINGS:
-{results_text}
-
-INSTRUCTIONS:
-- Integrate the findings logically.
-- **CITATIONS**: Use the links provided in the AGENT FINDINGS to cite your sources inline. Format: `[🔗](url)`.
-- If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
-- Apply the user profile directives to adjust your tone and recommendations.
-- Maintain a helpful, analytical tone.
-- Do not repeat yourself.
-- Ensure the final output is formatted in clean Markdown.
-"""
+    prompt = _build_synthesis_prompt(query, results, history, user_directives)
 
     try:
         response = await acompletion(
@@ -115,49 +158,18 @@ INSTRUCTIONS:
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"{results_text}\n\n(Synthesis failed: {str(e)})"
+        # Fall back to the raw findings rather than losing them entirely.
+        joined = "\n\n".join(text for text in results.values() if text)
+        return f"{joined}\n\n(Synthesis failed: {str(e)})"
 
 
 async def synthesize_response_stream(
     query: str, results: Dict[str, str], history: str = "", user_directives: str = ""
 ):
-    """Streamed synthesis."""
+    """Streamed synthesis. Shares ORCHESTRATOR_SYNTHESIS_PROMPT with synthesize_response."""
 
-    results_text = "\n\n".join(
-        [
-            f"--- {intent.upper()} RESULT ---\n{result}"
-            for intent, result in results.items()
-            if result
-        ]
-    )
+    prompt = _build_synthesis_prompt(query, results, history, user_directives)
 
-    # Build persona section if directives exist
-    persona_section = ""
-    if user_directives:
-        persona_section = f"""\n\nUSER PROFILE DIRECTIVES (Apply these to your response style and recommendations):
-{user_directives}
-"""
-
-    prompt = f"""You are a Master Financial Orchestrator. 
-Your goal is to synthesize the following agent findings into a cohesive, professional, and helpful response for the user.
-{persona_section}
-CHAT HISTORY (for context):
-{history}
-
-USER QUERY: {query}
-
-AGENT FINDINGS:
-{results_text}
-
-INSTRUCTIONS:
-- Integrate the findings logically.
-- **CITATIONS**: Use the links provided in the AGENT FINDINGS to cite your sources inline. Format: `[🔗](url)`.
-- If RAG documents (User's Portfolio) were searched, prioritize that data for "do I own" questions.
-- Apply the user profile directives to adjust your tone and recommendations.
-- Maintain a helpful, analytical tone.
-- Do not repeat yourself.
-- Ensure the final output is formatted in clean Markdown.
-"""
     try:
         stream = await acompletion(
             model="gemini/gemini-2.5-flash",
@@ -215,14 +227,18 @@ async def orchestrate(
             context["results"]["stock"] = result
 
         elif intent == IntentType.CALCULATOR:
-            enriched_query = f"History context: {history}\n\nUser Query: {query}"
+            enriched_query = enrich_query_with_context(query, context)
+            if history:
+                enriched_query = f"History context: {history}\n\n{enriched_query}"
             result = await asyncio.wait_for(
                 run_with_retry(financial_agent, enriched_query), timeout=90.0
             )
             context["results"]["calculator"] = result.final_output
 
         elif intent == IntentType.GENERAL:
-            enriched_query = f"Chat History:\n{history}\n\nUser Query: {query}"
+            enriched_query = enrich_query_with_context(query, context)
+            if history:
+                enriched_query = f"Chat History:\n{history}\n\n{enriched_query}"
             result = await run_with_retry(general_agent, enriched_query)
             context["results"]["general"] = result.final_output
 
@@ -313,7 +329,9 @@ async def orchestrate_stream(
             elif intent == IntentType.CALCULATOR:
                 yield {"type": "status", "content": "Calculating..."}
 
-                enriched_query = f"History context: {history}\n\nUser Query: {query}"
+                enriched_query = enrich_query_with_context(query, context)
+                if history:
+                    enriched_query = f"History context: {history}\n\n{enriched_query}"
 
                 # Use new true streaming function
                 from CalcAgent.src.utils import run_with_retry_stream
@@ -336,7 +354,9 @@ async def orchestrate_stream(
             elif intent == IntentType.GENERAL:
                 yield {"type": "status", "content": "Thinking (General Agent)..."}
 
-                enriched_query = f"Chat History:\n{history}\n\nUser Query: {query}"
+                enriched_query = enrich_query_with_context(query, context)
+                if history:
+                    enriched_query = f"Chat History:\n{history}\n\n{enriched_query}"
 
                 from CalcAgent.src.utils import run_with_retry_stream
                 from CalcAgent.src.agent import general_agent
