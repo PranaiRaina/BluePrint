@@ -45,6 +45,10 @@ async def run_calculator(query: str, context: Dict[str, Any] = None) -> str:
         return f"Calculator error: {str(e)}"
 
 
+# One retry. At an observed ~1-in-3 drop rate this takes visible failures to
+# roughly 1 in 9; more attempts mostly just make the user wait longer.
+MAX_STREAM_ATTEMPTS = 2
+
 BRANCH_LABELS = {
     "rag": "FROM THE USER'S OWN UPLOADED DOCUMENTS",
     "stock": "FROM LIVE MARKET DATA",
@@ -166,22 +170,61 @@ async def synthesize_response(
 async def synthesize_response_stream(
     query: str, results: Dict[str, str], history: str = "", user_directives: str = ""
 ):
-    """Streamed synthesis. Shares ORCHESTRATOR_SYNTHESIS_PROMPT with synthesize_response."""
+    """Streamed synthesis. Shares ORCHESTRATOR_SYNTHESIS_PROMPT with synthesize_response.
+
+    The upstream connection drops mid-stream often enough to matter. When it
+    does, the `async for` just ends: no exception, no finish_reason. So a reply
+    cut off at 105 characters looks exactly like one that finished. We require
+    finish_reason == "stop" before trusting the output, retry once if we do not
+    get it, and report an error rather than handing back half a sentence.
+    """
 
     prompt = _build_synthesis_prompt(query, results, history, user_directives)
 
-    try:
-        stream = await acompletion(
-            model="gemini/gemini-2.5-flash",
-            messages=[{"role": "user", "content": prompt}],
-            stream=True,
-        )
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield {"type": "token", "content": chunk.choices[0].delta.content}
-                await asyncio.sleep(0)  # Force buffer flush
-    except Exception as e:
-        yield {"type": "token", "content": f"\n\n(Synthesis Error: {e})"}
+    for attempt in range(MAX_STREAM_ATTEMPTS):
+        emitted_anything = False
+        finish_reason = None
+
+        try:
+            stream = await acompletion(
+                model="gemini/gemini-2.5-flash",
+                messages=[{"role": "user", "content": prompt}],
+                stream=True,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                if choice.delta.content:
+                    emitted_anything = True
+                    yield {"type": "token", "content": choice.delta.content}
+                    await asyncio.sleep(0)  # Force buffer flush
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+
+            if finish_reason == "stop":
+                return
+
+            reason = f"stream ended with finish_reason={finish_reason!r}"
+        except Exception as e:
+            reason = f"{type(e).__name__}: {e}"
+
+        print(f"[Synthesis] attempt {attempt + 1} incomplete - {reason}")
+
+        if attempt + 1 < MAX_STREAM_ATTEMPTS:
+            if emitted_anything:
+                # Partial text is already on the user's screen; the retry replays
+                # from the top, so tell the client to clear it first.
+                yield {"type": "reset", "content": ""}
+            continue
+
+        yield {
+            "type": "error",
+            "content": (
+                "The response was cut off before it finished. This is usually a "
+                "dropped connection to the model - please try again."
+            ),
+        }
 
 
 async def orchestrate(
@@ -294,6 +337,11 @@ async def orchestrate_stream(
                 async for chunk in perform_rag_search_stream(query, user_id=user_id, history=history):
                     if chunk["type"] == "status":
                         yield chunk
+                    elif chunk["type"] == "error":
+                        # A failed branch ends the turn. Continuing would let a
+                        # half-finished search be synthesised into a confident answer.
+                        yield chunk
+                        return
                     elif chunk["type"] == "token":
                         full_rag_response.append(chunk["content"])
                         if should_direct_stream:  # RAG is answering directly
@@ -319,6 +367,9 @@ async def orchestrate_stream(
                     elif chunk["type"] == "data":
                         # Push chart data to frontend immediately
                         yield chunk 
+                    elif chunk["type"] == "error":
+                        yield chunk
+                        return
                     elif chunk["type"] == "token":
                         full_stock_response.append(chunk["content"])
                         if should_direct_stream:
@@ -344,6 +395,9 @@ async def orchestrate_stream(
                 ):
                     if chunk["type"] == "status":
                         yield chunk
+                    elif chunk["type"] == "error":
+                        yield chunk
+                        return
                     elif chunk["type"] == "token":
                         full_calc_response.append(chunk["content"])
                         if should_direct_stream:
@@ -365,6 +419,9 @@ async def orchestrate_stream(
                 async for chunk in run_with_retry_stream(general_agent, enriched_query):
                     if chunk["type"] == "status":
                         yield chunk
+                    elif chunk["type"] == "error":
+                        yield chunk
+                        return
                     elif chunk["type"] == "token":
                         full_gen_response.append(chunk["content"])
                         if should_direct_stream:
@@ -386,4 +443,4 @@ async def orchestrate_stream(
         print("Orchestrator stream cancelled by client.")
         raise
     except Exception as e:
-        yield {"type": "token", "content": f"\n\n(Orchestrator Error: {e})"}
+        yield {"type": "error", "content": f"Orchestration failed: {e}"}

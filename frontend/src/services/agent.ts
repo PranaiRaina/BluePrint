@@ -48,6 +48,7 @@ type StreamEvent =
     | { type: 'token'; content: string }
     | { type: 'status'; content: string }
     | { type: 'tickers'; content: string[] }
+    | { type: 'reset'; content: string }
     | { type: 'error'; content: string }
     | { type: 'end' };
 
@@ -140,6 +141,7 @@ export const agentService = {
             onStatus: (status: string) => void;
             onToken: (token: string) => void;
             onTickers?: (tickers: string[]) => void;
+            onReset?: () => void;
             onComplete: () => void;
             onError: (error: string) => void;
         }
@@ -197,6 +199,12 @@ export const agentService = {
                             } else if (data.type === 'tickers') {
                                 if (callbacks.onTickers) {
                                     callbacks.onTickers(data.content);
+                                }
+                            } else if (data.type === 'reset') {
+                                // The server is retrying a stream that died partway.
+                                // Clear what's on screen so the replay doesn't double up.
+                                if (callbacks.onReset) {
+                                    callbacks.onReset();
                                 }
                             } else if (data.type === 'error') {
                                 callbacks.onError(data.content);

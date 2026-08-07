@@ -28,6 +28,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState("Thinking...");
     const [hasStreamContent, setHasStreamContent] = useState(false);
+    const [streamResetKey, setStreamResetKey] = useState(0);
 
     // Ref to hold the current streaming content without triggering re-renders
     const streamContentRef = useRef("");
@@ -98,6 +99,15 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                     },
                     onTickers: (tickers) => {
                         if (onTickers) onTickers(tickers);
+                    },
+                    onReset: () => {
+                        // The server's stream died partway and is replaying from
+                        // the top. Drop the dead partial text, and bump the key so
+                        // LiveMessage remounts - its reveal position lives in an
+                        // internal ref that would otherwise stay past the new end.
+                        streamContentRef.current = "";
+                        hasDisclaimerRef.current = false;
+                        setStreamResetKey(prev => prev + 1);
                     },
                     onComplete: () => {
                         // Final consistency update
@@ -291,6 +301,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                                     {isLoading && i === messages.length - 1 ? (
                                         <div className="relative">
                                             <LiveMessage
+                                                key={streamResetKey}
                                                 contentRef={streamContentRef}
                                                 isStreaming={isLoading}
                                             />

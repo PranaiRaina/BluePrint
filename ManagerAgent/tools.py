@@ -102,7 +102,9 @@ async def perform_rag_search_stream(
                 yield {"type": "status", "content": display_name}
 
     except Exception as e:
-        yield {"type": "token", "content": f"Error in RAG stream: {str(e)}"}
+        # An error must NOT be a token. A token becomes the answer body, gets
+        # fed to the synthesizer as a finding, and is saved to chat history.
+        yield {"type": "error", "content": f"Document search failed: {str(e)}"}
 
 
 async def ask_stock_analyst(query: str) -> str:
@@ -156,4 +158,4 @@ async def ask_stock_analyst_stream(query: str):
             yield chunk
 
     except Exception as e:
-        yield {"type": "token", "content": f"Error in Stock stream: {str(e)}"}
+        yield {"type": "error", "content": f"Stock analysis failed: {str(e)}"}

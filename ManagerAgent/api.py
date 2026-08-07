@@ -535,6 +535,7 @@ async def chat_stream(request: Request, body: AgentRequest):
             # Execute and yield
             full_response_buffer = []
             history_saved = False
+            stream_failed = False
 
             try:
                 async for chunk in run_stream():
@@ -547,10 +548,20 @@ async def chat_stream(request: Request, body: AgentRequest):
                     if chunk["type"] == "token":
                         content = chunk["content"]
                         full_response_buffer.append(content)
-                
+                    elif chunk["type"] == "reset":
+                        # A retry is replaying from the top; drop the dead attempt
+                        # so history does not end up with the text twice.
+                        full_response_buffer.clear()
+                    elif chunk["type"] == "error":
+                        stream_failed = True
+
                 # Normal completion save
                 final_text = "".join(full_response_buffer)
-                if final_text:
+                if stream_failed:
+                    # Never persist a half-finished answer as if it were real - it
+                    # would come back on reload looking like a complete reply.
+                    print(f"DEBUG: stream failed for session {actual_session_id}; not saving")
+                elif final_text:
                     await asyncio.to_thread(save_chat_pair, user_id, actual_session_id, body.query, final_text)
                     history_saved = True
                     
