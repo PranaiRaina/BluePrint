@@ -40,7 +40,9 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      // Supabase fires this on tab focus too. Only swap the object when the token
+      // really changed, otherwise every focus re-renders the whole dashboard.
+      setSession(prev => prev?.access_token === session?.access_token ? prev : session);
     });
 
     return () => { subscription.unsubscribe(); };
