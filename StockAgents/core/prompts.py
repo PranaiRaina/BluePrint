@@ -207,10 +207,12 @@ RULES:
 - If the user asks "Why" or for "News", use 'news_research'.
 - If the user just asks "Price" or "Chart", use 'get_stock_data'.
 - For generic "Analyze X", combine 'get_stock_data', 'quant_analysis' and 'news_research'.
+- Set "response_mode" to "direct" when the user asked for one specific thing: a price, a single metric, or one news event. Set it to "comprehensive" when the query is open-ended, such as "analyze X", "tell me about X", "deep dive on X", or "how is X doing".
 
 Return JSON matching this schema:
 {{
     "reasoning": "string",
+    "response_mode": "direct" | "comprehensive",
     "steps": [
         {{"tool": "tool_name", "args": {{...}}, "description": "string"}}
     ]

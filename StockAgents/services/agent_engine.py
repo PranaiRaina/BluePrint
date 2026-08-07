@@ -12,13 +12,14 @@ Architecture:
 """
 
 import asyncio
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field
 import json
 from .finnhub_client import finnhub_client
 from .llm_service import llm_service
 from StockAgents.core.prompts import (
     COMPREHENSIVE_MODE_INSTRUCTIONS,
+    DIRECT_MODE_INSTRUCTIONS,
     MAIN_AGENT_PROMPT,
     PLANNER_SYSTEM_PROMPT,
     SYNTHESIS_PROMPT,
@@ -45,6 +46,15 @@ class ExecutionPlan(BaseModel):
     reasoning: str = Field(..., description="Reasoning behind the plan")
     steps: List[PlannerStep] = Field(
         ..., description="Ordered list of steps to execute"
+    )
+    response_mode: Literal["direct", "comprehensive"] = Field(
+        "comprehensive",
+        description=(
+            "'direct' when the user asked for one specific thing (a price, one "
+            "metric, one news event). 'comprehensive' when the query is "
+            "open-ended. Defaults to comprehensive so a planner that omits the "
+            "field degrades to the fuller answer."
+        ),
     )
 
 
@@ -281,7 +291,11 @@ class AgentEngine:
             user_context=json.dumps(user_context, indent=2, default=str),
             plan=json.dumps(plan.dict(), indent=2),
             tool_outputs=json.dumps(results, indent=2, default=str),
-            mode_instructions=COMPREHENSIVE_MODE_INSTRUCTIONS,
+            mode_instructions=(
+                DIRECT_MODE_INSTRUCTIONS
+                if plan.response_mode == "direct"
+                else COMPREHENSIVE_MODE_INSTRUCTIONS
+            ),
         )
 
         try:
@@ -320,7 +334,11 @@ class AgentEngine:
             user_context=json.dumps(user_context, indent=2, default=str),
             plan=json.dumps(plan.dict(), indent=2),
             tool_outputs=json.dumps(results, indent=2, default=str),
-            mode_instructions=COMPREHENSIVE_MODE_INSTRUCTIONS,
+            mode_instructions=(
+                DIRECT_MODE_INSTRUCTIONS
+                if plan.response_mode == "direct"
+                else COMPREHENSIVE_MODE_INSTRUCTIONS
+            ),
         )
 
         try:
