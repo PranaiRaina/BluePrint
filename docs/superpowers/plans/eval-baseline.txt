@@ -1,0 +1,15 @@
+rank    score  val  question
+------------------------------------------------------------------------------
+   1   0.6650    n  How much was my rent payment in April 2025?
+   1   0.6602    n  How much was my rent payment in March 2025?
+   2   0.6427    n  What was my credit card payment in March?
+   2   0.6169    n  Did I pay for a gym membership?
+   2   0.6758    n  What was my closing balance at the end of April?
+   1   0.6420    y  How much interest did I earn in April?
+   1   0.6583    y  How much was my cheque deposit in May?
+   1   0.5891    y  How much did I withdraw from the ATM in April?
+   1   0.6251    y  How much did I transfer to my brokerage account in May?
+   1   0.7033    y  What was my salary deposit in May 2025?
+------------------------------------------------------------------------------
+right document first : 70%
+answer in top chunk  : 50%

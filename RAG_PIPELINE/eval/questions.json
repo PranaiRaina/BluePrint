@@ -1,0 +1,52 @@
+[
+  {
+    "question": "How much was my rent payment in April 2025?",
+    "expect_source": "specimen_bank_statement_apr2025.pdf",
+    "expect_contains": ["1,650.00"]
+  },
+  {
+    "question": "How much was my rent payment in March 2025?",
+    "expect_source": "specimen_bank_statement_mar2025.pdf",
+    "expect_contains": ["1,650.00"]
+  },
+  {
+    "question": "What was my credit card payment in March?",
+    "expect_source": "specimen_bank_statement_mar2025.pdf",
+    "expect_contains": ["556.72"]
+  },
+  {
+    "question": "Did I pay for a gym membership?",
+    "expect_source": "specimen_bank_statement_mar2025.pdf",
+    "expect_contains": ["39.79"]
+  },
+  {
+    "question": "What was my closing balance at the end of April?",
+    "expect_source": "specimen_bank_statement_apr2025.pdf",
+    "expect_contains": ["4,250.00"]
+  },
+  {
+    "question": "How much interest did I earn in April?",
+    "expect_source": "specimen_bank_statement_apr2025.pdf",
+    "expect_contains": ["7.11"]
+  },
+  {
+    "question": "How much was my cheque deposit in May?",
+    "expect_source": "specimen_bank_statement_may2025.pdf",
+    "expect_contains": ["480.00"]
+  },
+  {
+    "question": "How much did I withdraw from the ATM in April?",
+    "expect_source": "specimen_bank_statement_apr2025.pdf",
+    "expect_contains": ["109.20"]
+  },
+  {
+    "question": "How much did I transfer to my brokerage account in May?",
+    "expect_source": "specimen_bank_statement_may2025.pdf",
+    "expect_contains": ["2,000.00"]
+  },
+  {
+    "question": "What was my salary deposit in May 2025?",
+    "expect_source": "specimen_bank_statement_may2025.pdf",
+    "expect_contains": ["3,200.00"]
+  }
+]
