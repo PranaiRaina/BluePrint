@@ -66,11 +66,16 @@ def _blocks(text: str):
             if is_table != current_is_table:
                 starts_new_block = True
             elif is_table and current:
-                if _column_count(line) != current_columns:
+                if DELIMITER_RE.match(line.strip()):
+                    # A delimiter always belongs to the header directly above
+                    # it, so it never counts as a column-width change - the two
+                    # lines routinely disagree on pipe count. It only signals a
+                    # new table once rows have piled up under a previous header.
+                    if rows_since_header > 1:
+                        starts_new_block = True
+                        carry_header = True
+                elif _column_count(line) != current_columns:
                     starts_new_block = True
-                elif DELIMITER_RE.match(line.strip()) and rows_since_header > 1:
-                    starts_new_block = True
-                    carry_header = True
 
         if starts_new_block:
             carried: list[str] = []
@@ -89,6 +94,10 @@ def _blocks(text: str):
 
         current.append(line)
         if line.strip() and is_table:
+            # The delimiter defines the table's real width; the header line
+            # above it often does not agree, so trust the delimiter.
+            if DELIMITER_RE.match(line.strip()):
+                current_columns = _column_count(line)
             rows_since_header += 1
 
     if current:

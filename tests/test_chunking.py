@@ -1,6 +1,7 @@
 import os
 
 from RAG_PIPELINE.src.chunking import (
+    DELIMITER_RE,
     MAX_DOCUMENT_TOKENS,
     count_tokens,
     split_markdown,
@@ -157,3 +158,31 @@ def test_same_width_split_leaves_no_orphan_header():
         assert not stripped.endswith("| Date | Activity | Amount |"), (
             f"header orphaned onto previous table:\n{chunk}"
         )
+
+
+def test_no_chunk_of_a_real_statement_starts_with_an_orphan_delimiter():
+    """Regression: a header line and its own delimiter row routinely disagree
+    on pipe count, so a column-width rule split them apart and left the
+    delimiter — and every data row under it — with no column labels.
+
+    Synthetic tables did not catch this; only the real converter output did.
+    """
+    for name in ("mar", "apr", "may"):
+        path = os.path.join(FIXTURES, f"specimen_bank_statement_{name}2025.pdf")
+        for chunk in split_markdown(to_markdown(path)):
+            assert not chunk.strip().startswith("|---"), (
+                f"{name}: orphaned delimiter:\n{chunk[:200]}"
+            )
+
+
+def test_real_statement_table_chunks_carry_column_labels():
+    """Every table chunk must start with a header row, not a data row."""
+    for name in ("mar", "apr", "may"):
+        path = os.path.join(FIXTURES, f"specimen_bank_statement_{name}2025.pdf")
+        chunks = split_markdown(to_markdown(path))
+        table_chunks = [c for c in chunks if c.lstrip().startswith("|")]
+        for chunk in table_chunks:
+            lines = [ln for ln in chunk.split("\n") if ln.strip()]
+            assert any(DELIMITER_RE.match(ln.strip()) for ln in lines[:2]), (
+                f"{name}: table chunk has no header+delimiter:\n{chunk[:200]}"
+            )
