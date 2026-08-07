@@ -106,8 +106,8 @@ The planned move to 500-token chunks makes this worse, not better — a fixed
 
 ## Non-goals
 
-- **OCR for scanned/image-only PDFs.** Out of scope; they currently yield no
-  text and will continue to.
+- **A dedicated OCR stage.** Not needed: a page yielding near-zero words routes
+  to the Gemini fallback in Step 1b, which reads the rendered page directly.
 - **Query-side date extraction and filtering.** The metadata this design stores
   makes it possible; wiring it into `match_documents` is separate work the user
   plans to take on next.
@@ -233,6 +233,47 @@ pages of a document, and text is embedded rather than scanned.
 
 The two ratios (1.25x heading, 3x watermark) and the 8pt gap are starting values.
 They are tunable constants, and the eval harness is how they get tuned.
+
+### Step 1b — Verify the extraction, escalate only when it fails
+
+A transaction moves money one direction: exactly one of the credit/debit pair is
+populated, and the running balance moves by that amount. Header names vary
+(Deposits/Withdrawals, Money In/Money Out, Payments/Charges) but the invariant
+holds across statement formats.
+
+That makes extraction *checkable* without a model. For each row, assert:
+
+```
+balance[n] - balance[n-1] == +credit  or  -debit
+```
+
+On the specimen all 16 rows reconcile and the final balance lands exactly on the
+stated closing figure of 6,244.86. A geometry bug that misfiles a debit as a
+credit inverts a delta and fails immediately.
+
+**Escalation ladder:**
+
+1. `pdfplumber` geometry (Step 1) — 20ms measured on the specimen.
+2. If a document has a balance column and reconciliation fails, or if the page
+   yields near-zero words (a scanned/image-only PDF), send the PDF to
+   `gemini-2.5-flash` for markdown conversion.
+3. Reconcile the model's output the same way. If it also fails, ingest the
+   document but flag it, and surface that to the user.
+
+Gemini converted the specimen correctly — every row, both near-identical
+transfers, empty cells preserved — so it is a sound fallback. It is not the
+primary path because it is **1000x slower**: 22.2s versus 20ms, and
+output-bound at 4,635 output tokens for a single page. A ten-page statement
+scales that linearly into minutes, and risks silent truncation mid-table if it
+reaches the output ceiling — which reconciliation would then catch.
+
+Because near-zero extracted words routes straight to the model, scanned PDFs are
+handled without a separate OCR stage.
+
+**Documents the check cannot reach:** statements with no running balance (common
+on credit cards) and non-transactional documents (invoices, pay stubs, tax
+forms). Those rely on the extractor being right. The documents where a wrong
+number is most costly are the ones the check does cover.
 
 ### Step 2 — Other formats via markitdown
 
@@ -417,6 +458,10 @@ Unit tests, all offline and in the default suite:
     the regression test for left-anchored columns.
 11. `Salary Credit - Northwind Analytics`, whose text ends exactly on the Credit
     column's anchor, still lands in Description.
+12. Reconciliation passes on the specimen: all 16 rows, closing balance 6,244.86.
+13. Reconciliation *fails* when a credit and debit are deliberately swapped in a
+    fixture row — the check has to be able to fail, or it proves nothing.
+14. A document with no balance column skips reconciliation rather than erroring.
 
 Retrieval quality is measured by the Step 0 harness, not by pytest — baseline
 recorded before Step 1, re-run after Step 6 and after threshold retuning.
