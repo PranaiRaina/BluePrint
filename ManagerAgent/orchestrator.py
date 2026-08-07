@@ -157,6 +157,7 @@ async def synthesize_response(
 
     try:
         response = await acompletion(
+            num_retries=3,
             model="gemini/gemini-2.5-flash",
             messages=[{"role": "user", "content": prompt}],
         )
@@ -187,6 +188,7 @@ async def synthesize_response_stream(
 
         try:
             stream = await acompletion(
+            num_retries=3,
                 model="gemini/gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
                 stream=True,

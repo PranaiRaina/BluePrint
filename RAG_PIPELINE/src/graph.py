@@ -1,3 +1,4 @@
+import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -7,6 +8,7 @@ from langchain_tavily import TavilySearch
 from langchain_core.documents import Document
 from .config import settings
 from .doc_metadata import doc_type_label, period_label
+from .llm_retry import with_retry
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 
@@ -34,7 +36,7 @@ def get_llm():
     )
 
 
-llm = get_llm()
+llm = with_retry(get_llm())
 
 
 def describe_document(doc: Document) -> str:
@@ -153,9 +155,15 @@ def retrieve(state: GraphState):
     return {"documents": documents, "question": question, "user_id": user_id}
 
 
-def grade_documents(state: GraphState):
+async def grade_documents(state: GraphState):
     """
     Determines if the retrieved documents are relevant to the question.
+
+    Grades every document concurrently. One call per document is kept
+    deliberately: batching them into a single prompt would make the model judge
+    documents relative to each other rather than against the question, and
+    position bias would grade the middle of the list less carefully. Retries
+    handle the flakiness; concurrency handles the latency.
     """
     question = state["question"].lower()
     documents = state["documents"]
@@ -196,18 +204,33 @@ def grade_documents(state: GraphState):
     )
     grader_chain = prompt | llm | StrOutputParser()
 
+    print(f"DEBUG [RAG]: Grading {len(documents)} documents...")
+    scores = await asyncio.gather(
+        *(
+            grader_chain.ainvoke(
+                {
+                    "question": question,
+                    "document": doc.page_content,
+                    "source": describe_document(doc),
+                }
+            )
+            for doc in documents
+        ),
+        return_exceptions=True,
+    )
+
     filtered_docs = []
     has_relevant = False
 
-    print(f"DEBUG [RAG]: Grading {len(documents)} documents...")
-    for doc in documents:
-        score = grader_chain.invoke(
-            {
-                "question": question,
-                "document": doc.page_content,
-                "source": describe_document(doc),
-            }
-        )
+    for doc, score in zip(documents, scores):
+        if isinstance(score, BaseException):
+            # Retries are already exhausted by this point. Keep the document
+            # rather than drop it - a grading outage should not look to the
+            # user like their statement is missing.
+            print(f"DEBUG [RAG]: Grading failed for {doc.metadata.get('source')}: {score}")
+            filtered_docs.append(doc)
+            has_relevant = True
+            continue
         print(f"DEBUG [RAG]: Doc from {doc.metadata.get('source')} Grade: {score}")
         if "yes" in score.lower():
             filtered_docs.append(doc)

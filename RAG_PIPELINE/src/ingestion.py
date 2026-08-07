@@ -4,6 +4,7 @@ from .chunk_summary import summarize_chunks
 from .chunking import MAX_DOCUMENT_TOKENS, count_tokens, split_markdown
 from .convert import to_markdown
 from .doc_metadata import extract_document_metadata
+from .llm_retry import retry_sync, with_retry
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase import create_client
@@ -205,7 +206,7 @@ def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: f
             task_type="retrieval_query",
             output_dimensionality=768,
         )
-        query_vector = embeddings.embed_query(query)
+        query_vector = retry_sync(embeddings.embed_query, query)
         
         client = get_supabase_client()
         
@@ -262,7 +263,7 @@ async def extract_holdings_from_text(text: str) -> list:
         {context}
         """
         
-        response = await llm.ainvoke(prompt)
+        response = await with_retry(llm).ainvoke(prompt)
         import json
         
         # Clean response (remove markdown if present)
@@ -369,7 +370,7 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
         ]
 
         # 8. Embed & Store
-        vectorstore.add_texts(texts=texts, metadatas=metadatas)
+        retry_sync(vectorstore.add_texts, texts=texts, metadatas=metadatas)
 
         return f"Successfully processed {len(texts)} chunks for {filename}"
 

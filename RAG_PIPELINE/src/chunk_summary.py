@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .config import settings
 from .doc_metadata import DocumentMetadata, doc_type_label, period_label
+from .llm_retry import with_retry
 
 MAX_SUMMARY_WORDS = 20
 SUMMARY_BATCH_SIZE = 25
@@ -88,7 +89,7 @@ async def _summarize_batch(chunks: list[str], meta: DocumentMetadata) -> list[st
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
     )
-    structured = llm.with_structured_output(ChunkSummaries)
+    structured = with_retry(llm.with_structured_output(ChunkSummaries))
     result = await structured.ainvoke(build_batch_prompt(chunks, meta))
 
     if len(result.summaries) != len(chunks):

@@ -10,6 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 from .config import settings
+from .llm_retry import with_retry
 
 DOC_TYPES = (
     "bank_statement",
@@ -68,7 +69,7 @@ async def extract_document_metadata(text: str) -> DocumentMetadata:
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
         )
-        structured = llm.with_structured_output(DocumentMetadata)
+        structured = with_retry(llm.with_structured_output(DocumentMetadata))
         return await structured.ainvoke(PROMPT.format(text=text[:8000]))
     except Exception as e:
         print(f"Metadata Extraction Warning: {e}")
