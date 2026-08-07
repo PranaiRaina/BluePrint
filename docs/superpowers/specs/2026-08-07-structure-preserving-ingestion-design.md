@@ -183,6 +183,13 @@ class DocumentMetadata(BaseModel):
     period_ym: int | None  # 202505 — the month the document is FOR
 ```
 
+`period_ym` is `None` whenever the document covers no span of time. Prose
+documents — articles, letters, contracts, guides — have no period, and a date
+printed on one is when it was written, not a period it covers. The prompt says
+this explicitly and forbids guessing, because a publication date silently
+recorded as a period would make the document answer month-scoped queries it has
+nothing to do with.
+
 `period_ym` is a single `YYYYMM` integer rather than a date range. Range queries
 need no parsing or casting beyond one cast:
 
