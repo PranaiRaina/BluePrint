@@ -1,7 +1,9 @@
 import os
 import hashlib
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from .chunk_summary import summarize_chunks
+from .chunking import MAX_DOCUMENT_TOKENS, count_tokens, split_markdown
+from .convert import to_markdown
+from .doc_metadata import extract_document_metadata
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase import create_client
@@ -237,27 +239,6 @@ def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: f
         return []
 
 
-async def generate_summary(text: str) -> str:
-    """
-    Generate a 2-sentence summary of the document for global context.
-    """
-    try:
-        # Dynamic LLM Selection
-        # Defaulting to Gemini 2.0 Flash (OpenAI Compatible) for speed
-        # But for LangChain, ChatGoogleGenerativeAI is native and easy
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", google_api_key=settings.GOOGLE_API_KEY
-        )
-
-        # Truncate to first 10k chars to avoid token limits on large docs
-        prompt = f"Summarize the following document in 2 sentences to provide global context:\n\n{text[:10000]}"
-        response = await llm.ainvoke(prompt)
-        return response.content
-    except Exception as e:
-        print(f"Summary Generation Warning: {e}")
-        return "Global context summary unavailable."
-
-
 async def extract_holdings_from_text(text: str) -> list:
     """
     Extract structured stock holdings from text using Gemini 2.5 Flash.
@@ -299,76 +280,6 @@ async def extract_holdings_from_text(text: str) -> list:
         return []
 
 
-async def process_pdf(file_path: str):
-    """
-    Ingest a PDF file: Hash -> Check Duplicate -> Load -> PII Clean -> Summary -> Chunk -> Embed -> Store
-    """
-    try:
-        # 0. HASHING (Duplicate Check)
-        with open(file_path, "rb") as f:
-            file_hash = hashlib.sha256(f.read()).hexdigest()
-
-        vectorstore = get_vectorstore()
-        supabase = get_supabase_client()
-
-        # Check if hash exists in metadata
-        # Supabase: Query the 'documents' table directly via the client
-        response = supabase.table("documents").select("id").contains("metadata", {"file_hash": file_hash}).limit(1).execute()
-        
-        if response.data:
-            return f"Duplicate detected. Document with hash {file_hash[:8]}... already exists."
-
-        # 1. Load
-        loader = PyPDFLoader(file_path)
-        documents = loader.load()
-        full_text = "\n".join([doc.page_content for doc in documents])
-
-        # 2. PII Cleaning
-        clean_text = remove_pii(full_text)
-
-        # 3. Global Summary
-        summary = await generate_summary(clean_text)
-
-        # 4. Contextual Chunking
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
-        )
-        raw_chunks = text_splitter.split_text(clean_text)
-
-        # Add Context to chunks
-        contextual_chunks = []
-        metadatas = []
-        filename = os.path.basename(file_path)
-
-        for i, chunk in enumerate(raw_chunks):
-            # Prepend summary
-            augmented_text = (
-                f"Document: {filename}\nGlobal Summary: {summary}\n\nContent: {chunk}"
-            )
-
-            contextual_chunks.append(augmented_text)
-            metadatas.append(
-                {
-                    "file_hash": file_hash,
-                    "source": filename,
-                    "chunk_index": i,
-                    "summary": summary,
-                }
-            )
-
-        if not contextual_chunks:
-            return "No text found in PDF."
-
-        # 5. Embed & Store
-        vectorstore.add_texts(texts=contextual_chunks, metadatas=metadatas)
-
-        return f"Successfully processed {len(contextual_chunks)} chunks for {filename} (Hash: {file_hash[:8]}...)"
-
-    except Exception as e:
-        print(f"Error processing PDF: {e}")
-        raise e
-
-
 async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
     """
     Ingest a PDF from memory: Hash -> Check Duplicate (scoped) -> Load -> PII Clean -> Summary -> Chunk -> Embed -> Store (scoped)
@@ -386,7 +297,7 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
         if response.data:
             return f"Duplicate detected for user. {filename} already indexed."
 
-        # 1. Load (from memory using a temp file for PyPDFLoader)
+        # 1. Convert to markdown
         import tempfile
 
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -394,68 +305,73 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
             tmp_path = tmp.name
 
         try:
-            loader = PyPDFLoader(tmp_path)
-            documents = loader.load()
-            full_text = "\n".join([doc.page_content for doc in documents])
+            full_text = to_markdown(tmp_path)
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
-        # 2. PII Cleaning
+        # 2. Size limit. Reject rather than truncate - half a statement in the
+        # index, with nothing marking the rest missing, is worse than no ingest.
+        token_count = count_tokens(full_text)
+        if token_count > MAX_DOCUMENT_TOKENS:
+            return (
+                f"Document too large: {token_count:,} tokens "
+                f"(limit {MAX_DOCUMENT_TOKENS:,}). Please split it and re-upload."
+            )
+
+        # 3. PII Cleaning. Runs before every LLM call below, so no model sees
+        # unredacted text.
         clean_text = remove_pii(full_text)
 
-        # 3. [NEW] Extraction Hook (Human-in-the-Loop)
+        # 4. Extraction Hook (Human-in-the-Loop)
         try:
             extracted_holdings = await extract_holdings_from_text(clean_text)
             if extracted_holdings:
-                print(f"Extraction Hook Found {len(extracted_holdings)} items: {extracted_holdings}")
-                
+                print(f"Extraction Hook Found {len(extracted_holdings)} items")
+
                 # Save to Supabase holdings table (user-scoped)
                 from ManagerAgent.holdings_db import upsert_holding
+
                 for item in extracted_holdings:
                     item["source_doc"] = filename
-                    item["status"] = "pending"  # Extracted = pending until user confirms
+                    item["status"] = "pending"  # pending until the user confirms
                     upsert_holding(user_id, item)
-                    
+
         except Exception as e:
             print(f"Extraction Hook Failed: {e}")
 
-        # 4. Global Summary
-        summary = await generate_summary(clean_text)
+        # 5. Document metadata - type, issuer, period. Never embedded.
+        meta = await extract_document_metadata(clean_text)
 
-        # 4. Contextual Chunking
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
-        )
-        raw_chunks = text_splitter.split_text(clean_text)
-
-        # Add Context to chunks
-        contextual_chunks = []
-        metadatas = []
-
-        for i, chunk in enumerate(raw_chunks):
-            augmented_text = (
-                f"Document: {filename}\nGlobal Summary: {summary}\n\nContent: {chunk}"
-            )
-
-            contextual_chunks.append(augmented_text)
-            metadatas.append(
-                {
-                    "file_hash": file_hash,
-                    "source": filename,
-                    "user_id": user_id,  # CRITICAL: Scoping
-                    "chunk_index": i,
-                    "summary": summary,
-                }
-            )
-
-        if not contextual_chunks:
+        # 6. Chunk on structure
+        chunks = split_markdown(clean_text)
+        if not chunks:
             return "No text found in PDF."
 
-        # 5. Embed & Store
-        vectorstore.add_texts(texts=contextual_chunks, metadatas=metadatas)
+        # 7. One summary per chunk - the only text embedded alongside it
+        summaries = await summarize_chunks(chunks, meta)
 
-        return f"Successfully processed {len(contextual_chunks)} chunks for {filename}"
+        base_metadata = {
+            "file_hash": file_hash,
+            "source": filename,
+            "user_id": user_id,  # CRITICAL: Scoping
+            "doc_type": meta.doc_type,
+            "issuer": meta.issuer,
+            "period_ym": meta.period_ym,
+        }
+
+        texts = [
+            f"{summary}\n\n{chunk}" for summary, chunk in zip(summaries, chunks)
+        ]
+        metadatas = [
+            {**base_metadata, "chunk_index": i, "chunk_summary": summary}
+            for i, summary in enumerate(summaries)
+        ]
+
+        # 8. Embed & Store
+        vectorstore.add_texts(texts=texts, metadatas=metadatas)
+
+        return f"Successfully processed {len(texts)} chunks for {filename}"
 
     except Exception as e:
         print(f"Error in scoped processing: {e}")

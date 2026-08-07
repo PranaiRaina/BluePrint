@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import os
 import sys
 
@@ -7,6 +7,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from RAG_PIPELINE.src.ingestion import remove_pii, process_pdf_scoped
+from RAG_PIPELINE.src.doc_metadata import DocumentMetadata
 
 class TestIngestion(unittest.IsolatedAsyncioTestCase):
     
@@ -68,10 +69,14 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
 
     @patch("RAG_PIPELINE.src.ingestion.get_supabase_client")
     @patch("RAG_PIPELINE.src.ingestion.get_vectorstore")
-    @patch("RAG_PIPELINE.src.ingestion.PyPDFLoader")
+    @patch("RAG_PIPELINE.src.ingestion.to_markdown")
     @patch("RAG_PIPELINE.src.ingestion.GoogleGenerativeAIEmbeddings")
-    @patch("RAG_PIPELINE.src.ingestion.generate_summary")
-    async def test_process_pdf_scoped_duplicate(self, mock_summary, mock_embeddings, mock_loader, mock_get_vs, mock_get_client):
+    @patch("RAG_PIPELINE.src.ingestion.extract_document_metadata", new_callable=AsyncMock)
+    @patch("RAG_PIPELINE.src.ingestion.summarize_chunks", new_callable=AsyncMock)
+    async def test_process_pdf_scoped_duplicate(
+        self, mock_summaries, mock_metadata, mock_embeddings,
+        mock_to_markdown, mock_get_vs, mock_get_client,
+    ):
         """Test that duplicate file detection works"""
         
         # Setup Mocks
@@ -103,10 +108,14 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
 
     @patch("RAG_PIPELINE.src.ingestion.get_supabase_client")
     @patch("RAG_PIPELINE.src.ingestion.get_vectorstore")
-    @patch("RAG_PIPELINE.src.ingestion.PyPDFLoader")
+    @patch("RAG_PIPELINE.src.ingestion.to_markdown")
     @patch("RAG_PIPELINE.src.ingestion.GoogleGenerativeAIEmbeddings")
-    @patch("RAG_PIPELINE.src.ingestion.generate_summary")
-    async def test_process_pdf_scoped_success(self, mock_summary, mock_embeddings, mock_loader, mock_get_vs, mock_get_client):
+    @patch("RAG_PIPELINE.src.ingestion.extract_document_metadata", new_callable=AsyncMock)
+    @patch("RAG_PIPELINE.src.ingestion.summarize_chunks", new_callable=AsyncMock)
+    async def test_process_pdf_scoped_success(
+        self, mock_summaries, mock_metadata, mock_embeddings,
+        mock_to_markdown, mock_get_vs, mock_get_client,
+    ):
         """Test successful ingestion flow"""
         
         # Setup Mocks
@@ -115,7 +124,12 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
         mock_vs = MagicMock()
         mock_get_vs.return_value = mock_vs
         
-        mock_summary.return_value = "A summary."
+        mock_metadata.return_value = DocumentMetadata(
+            doc_type="bank_statement",
+            issuer="Meridian Trust Bank",
+            period_ym=202505,
+        )
+        mock_summaries.return_value = ["May 2025 Meridian checking rent payment."]
         
         # Mock Duplicate Check -> No duplicate
         mock_execute_empty = MagicMock()
@@ -127,12 +141,10 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
             .limit.return_value \
             .execute.return_value = mock_execute_empty
 
-        # Mock PDF Loading
-        mock_doc = MagicMock()
-        mock_doc.page_content = "This is the document content."
-        mock_loader_instance = MagicMock()
-        mock_loader.return_value = mock_loader_instance
-        mock_loader_instance.load.return_value = [mock_doc]
+        mock_to_markdown.return_value = (
+            "# Statement\n\n| Date | Description | Amount |\n|---|---|---|\n"
+            "| 05/02/2025 | Payment - Rent | 1,650.00 |\n"
+        )
 
         # Input
         filename = "unique.pdf"
@@ -146,6 +158,29 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Successfully processed", result)
         # Verify add_texts was called on vectorstore
         mock_vs.add_texts.assert_called()
+
+    @patch("RAG_PIPELINE.src.ingestion.get_supabase_client")
+    @patch("RAG_PIPELINE.src.ingestion.get_vectorstore")
+    @patch("RAG_PIPELINE.src.ingestion.to_markdown")
+    @patch("RAG_PIPELINE.src.ingestion.GoogleGenerativeAIEmbeddings")
+    async def test_process_pdf_scoped_rejects_oversized_document(
+        self, mock_embeddings, mock_to_markdown, mock_get_vs, mock_get_client
+    ):
+        """Oversized documents are rejected, never silently truncated."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_execute_empty = MagicMock()
+        mock_execute_empty.data = []
+        mock_client.table.return_value.select.return_value \
+            .contains.return_value.limit.return_value \
+            .execute.return_value = mock_execute_empty
+
+        mock_to_markdown.return_value = "word " * 200_000
+
+        result = await process_pdf_scoped("huge.pdf", b"huge", "user123")
+
+        self.assertIn("too large", result.lower())
+        mock_get_vs.return_value.add_texts.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

@@ -624,8 +624,6 @@ async def upload_document(
         )
 
         # 3. Process with Ingestion Pipeline for RAG
-        # Note: process_pdf currently expects a local path.
-        # Refactoring ingestion.py to accept user_id and content/path.
         from RAG_PIPELINE.src.ingestion import process_pdf_scoped
 
         result = await process_pdf_scoped(file.filename, file_content, user_id)
