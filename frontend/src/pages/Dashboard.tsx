@@ -36,6 +36,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const [currentSessionId, setCurrentSessionId] = useState<string>(() => generateId());
     const [initialChatQuery, setInitialChatQuery] = useState('');
     const [chatKey, setChatKey] = useState(0);
+    // True once this session has a conversation to return to.
+    const [hasActiveChat, setHasActiveChat] = useState(false);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
     const lastSavedMetadata = React.useRef<string>("");
 
@@ -47,6 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         setMockInsight(null);
         setExtractedTickers([]); // <--- Clear previous tickers
         setChatKey(prev => prev + 1); // Force ChatView remount
+        setHasActiveChat(false); // Nothing to go back to yet
         setActiveTab('overview'); // Switch to overview for fresh start
     };
 
@@ -69,6 +72,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
         setCurrentSessionId(session.session_id);
         setInitialChatQuery('');
+        setHasActiveChat(true);
 
         if (isNewSession) {
             setChatKey(prev => prev + 1);
@@ -138,6 +142,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             });
             setInitialChatQuery(query);
             setChatKey(prev => prev + 1); // Force ChatView remount
+            setHasActiveChat(true);
             setActiveTab('chat');
             setLoadingStage(0);
             setQuery('');
@@ -175,7 +180,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
 
     const handleTabChange = (tab: 'overview' | 'market' | 'vault' | 'chat' | 'stocks' | 'profile' | 'analytics' | 'simulation') => {
-        // Fix: Removed aggressive redirect that breaks Home tab navigation
+        // The Home tab stays highlighted while you are in a conversation (see
+        // Navbar's isActive), so it reads as the way back to that conversation.
+        // Send it there instead of to the empty landing page. "New Chat" in the
+        // sidebar is how you get back to the landing page.
+        if (tab === 'overview' && hasActiveChat) {
+            setActiveTab('chat');
+            return;
+        }
         setActiveTab(tab);
     };
 
