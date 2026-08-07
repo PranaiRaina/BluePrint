@@ -348,12 +348,16 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                         }} onViewAnalysis={() => { setActiveTab('analytics'); }} />}
                     </div>
 
+                    {/* Mounted only while visible - it holds no state worth preserving
+                        and was fetching holdings on every tab. */}
                     <div className={`w-full h-full ${activeTab === 'simulation' ? 'block' : 'hidden'}`}>
-                        <StocksView session={session} onViewAnalysis={() => { setActiveTab('analytics'); }} isSidebarOpen={!isSidebarCollapsed} />
+                        {activeTab === 'simulation' && <StocksView session={session} onViewAnalysis={() => { setActiveTab('analytics'); }} isSidebarOpen={!isSidebarCollapsed} />}
                     </div>
 
+                    {/* Stays mounted to keep the selected ticker and time range,
+                        but isActive stops it fetching while hidden. */}
                     <div className={`w-full h-full ${activeTab === 'stocks' ? 'block' : 'hidden'}`}>
-                        <StockAnalyticsView session={session} tickers={extractedTickers} />
+                        <StockAnalyticsView session={session} tickers={extractedTickers} isActive={activeTab === 'stocks'} />
                     </div>
 
                     {/* Analytics Full Page View */}

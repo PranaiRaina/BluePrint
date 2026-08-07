@@ -9,9 +9,12 @@ import AnimatedCounter from '../ui/AnimatedCounter';
 interface StockAnalyticsViewProps {
     session: Session;
     tickers: string[];
+    /** False while this tab is hidden. The component stays mounted to keep the
+     *  selected ticker and time range, but must not fetch what nobody is looking at. */
+    isActive: boolean;
 }
 
-const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, tickers }) => {
+const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, tickers, isActive }) => {
 
     const [selectedTicker, setSelectedTicker] = useState<string>(tickers[0] || '');
     const [stockData, setStockData] = useState<StockData | null>(null);
@@ -22,6 +25,10 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
 
     // Fetch stock data when ticker changes
     useEffect(() => {
+        // This tab is hidden with CSS rather than unmounted, so without this
+        // guard it kept polling /v1/agent/stock while the user sat in chat.
+        if (!isActive) return;
+
         const fetchData = async () => {
             if (!selectedTicker) return;
             setLoading(true);
@@ -35,7 +42,7 @@ const StockAnalyticsView: React.FC<StockAnalyticsViewProps> = ({ session, ticker
             }
         };
         void fetchData();
-    }, [selectedTicker, session, timeRange]);
+    }, [selectedTicker, session, timeRange, isActive]);
 
     // Update selected ticker when tickers prop changes
     useEffect(() => {
