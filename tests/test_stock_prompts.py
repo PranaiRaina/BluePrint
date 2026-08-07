@@ -52,3 +52,26 @@ def test_main_agent_prompt_forbids_advising():
     lowered = MAIN_AGENT_PROMPT.lower()
     assert "you do not advise" in lowered or "do not advise" in lowered
     assert "portfolio manager" not in lowered
+
+
+import re
+
+# A markdown link wrapped in backticks: `[label](url)
+BACKTICKED_LINK = re.compile(r"`\[[^\]]*\]\(")
+
+
+def test_no_backticked_markdown_links_in_prompt_sources():
+    offenders = []
+    for path in PROMPT_SOURCES:
+        for match in BACKTICKED_LINK.finditer(_read(path)):
+            offenders.append(f"{path.relative_to(REPO_ROOT)}: {match.group(0)!r}")
+    assert not offenders, (
+        "A markdown link is wrapped in backticks. The model copies the backticks "
+        "verbatim and the link renders as inline code:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_researcher_prompt_warns_against_backticks():
+    from StockAgents.core.prompts import RESEARCHER_SYSTEM_PROMPT
+
+    assert "backtick" in RESEARCHER_SYSTEM_PROMPT.lower()
