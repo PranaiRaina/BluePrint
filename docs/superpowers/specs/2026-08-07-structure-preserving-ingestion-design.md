@@ -172,6 +172,9 @@ Per page:
    occupying several emit as a markdown table row. A run of consecutive
    multi-column lines becomes one table, with the first row as its header and a
    `|---|` delimiter inserted beneath it.
+8. **Record the page number** on every line produced, carried through chunking
+   into chunk metadata. It backs the `header_path` fallback in Step 5 and gives
+   citations a location.
 
 Step 6 is what fixes the correctness bug, and it is the step my first prototype
 omitted — gap-splitting alone reproduces `pypdf`'s failure with nicer formatting.
@@ -258,8 +261,8 @@ never sees unredacted text. Dates and organisation names are not in
 4. **Tables** split by row groups sized to the same 500-token budget, with the
    header row and `|---|` delimiter **repeated at the top of each group**.
 
-Step 4 exists because a character-based split of a long table leaves the second
-piece as unlabelled numbers:
+Sub-step 4 exists because a character-based split of a long table leaves the
+second piece as unlabelled numbers:
 
 ```
 | 05/18 | AMZN MKTP | -$34.99 | $1,875.45 |
@@ -280,6 +283,12 @@ Replace the constant prefix at `ingestion.py:437`:
 prefix = f"[{issuer} · {doc_type_label} · {period_label} · {header_path}]"
 embedded_text = f"{prefix}\n\n{chunk}"
 ```
+
+`doc_type_label` is the `doc_type` enum humanised — `bank_statement` renders as
+`Bank Statement`. `period_label` is derived from the ISO dates: `May 2025` when
+both fall in one month, `May-Jul 2025` when they span several, and omitted
+entirely when both are `None`. The stored fields stay ISO; only the display form
+is condensed.
 
 Producing:
 
@@ -306,6 +315,10 @@ Removing it costs the broad-query case: "summarize my finances" currently matche
 summary text present in every chunk, and therefore works by accident. To replace
 that deliberately, emit **one additional chunk per document** whose content *is*
 the rendered metadata plus summary, flagged `is_summary_chunk: true`.
+
+This chunk carries no Step 5 prefix — its body already states the issuer, type,
+and period in full, so a prefix would only duplicate them. Its `header_path` is
+empty and its `chunk_index` is `-1`.
 
 This gives document-level questions a real retrieval target instead of an
 artifact, and may make the `is_broad` threshold-drop in `graph.py` redundant.
