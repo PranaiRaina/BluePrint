@@ -12,12 +12,18 @@ Architecture:
 """
 
 import asyncio
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field
 import json
 from .finnhub_client import finnhub_client
 from .llm_service import llm_service
-from StockAgents.core.prompts import MAIN_AGENT_PROMPT, PLANNER_SYSTEM_PROMPT
+from StockAgents.core.prompts import (
+    COMPREHENSIVE_MODE_INSTRUCTIONS,
+    DIRECT_MODE_INSTRUCTIONS,
+    MAIN_AGENT_PROMPT,
+    PLANNER_SYSTEM_PROMPT,
+    SYNTHESIS_PROMPT,
+)
 
 # System Prompt for the Main Agent (Portfolio Manager)
 
@@ -40,6 +46,15 @@ class ExecutionPlan(BaseModel):
     reasoning: str = Field(..., description="Reasoning behind the plan")
     steps: List[PlannerStep] = Field(
         ..., description="Ordered list of steps to execute"
+    )
+    response_mode: Literal["direct", "comprehensive"] = Field(
+        "comprehensive",
+        description=(
+            "'direct' when the user asked for one specific thing (a price, one "
+            "metric, one news event). 'comprehensive' when the query is "
+            "open-ended. Defaults to comprehensive so a planner that omits the "
+            "field degrades to the fuller answer."
+        ),
     )
 
 
@@ -110,7 +125,6 @@ class AgentEngine:
 
         # 2. Execute
         execution_results = {}
-        charts_data = {}
 
         # Helper to run tools safely (Same as sync)
         async def execute_step(step: PlannerStep):
@@ -127,9 +141,6 @@ class AgentEngine:
                     ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
-                    # Store chart data separately for frontend
-                    if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
@@ -164,14 +175,6 @@ class AgentEngine:
             result = await execute_step(step)
             execution_results[f"step_{i}_{step.tool}"] = result
 
-        # Yield Chart Data if available
-        if charts_data:
-            import json
-            yield {
-                "type": "data",
-                "content": json.dumps({"charts": charts_data})
-            }
-
         # 3. Synthesize (Streaming)
         yield {"type": "status", "content": "Synthesizing recommendation..."}
         async for chunk in self._generate_recommendation_stream(
@@ -195,7 +198,6 @@ class AgentEngine:
 
         # 2. Execute
         execution_results = {}
-        charts_data = {}
 
         # Helper to run tools safely
         async def execute_step(step: PlannerStep):
@@ -212,8 +214,6 @@ class AgentEngine:
                     ticker = ticker.upper()
                     quote = await finnhub_client.get_quote(ticker)
                     candles = await finnhub_client.get_candles(ticker, resolution="D")
-                    if candles.get("s") == "ok":
-                        charts_data[ticker] = candles.get("c", [])
                     return {"quote": quote, "candles": candles}
                 elif step.tool == "quant_analysis":
                     from .quant_agent import quant_agent
@@ -247,7 +247,6 @@ class AgentEngine:
             "intent": "dynamic_plan",
             "plan": plan.dict(),
             "analysis": {
-                "charts": charts_data,  # For frontend visualization
                 "results": execution_results,
             },
             "recommendation": recommendation,
@@ -265,65 +264,23 @@ class AgentEngine:
         """
         from datetime import datetime
 
-        context_str = json.dumps(results, indent=2, default=str)
-        user_context_str = json.dumps(user_context, indent=2, default=str)
-        plan_str = json.dumps(plan.dict(), indent=2)
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Use simple synthesis based on Main Agent Persona
         system_prompt = (
             MAIN_AGENT_PROMPT
             + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
         )
 
-        user_msg = f"""
-        Current Date: {current_date}
-        User Query: {query}
-        
-        User Portfolio Context:
-        {user_context_str}
-        
-        Execution Plan:
-        {plan_str}
-        
-        Tool Outputs:
-        {context_str}
-        
-        Instructions:
-        1. **PRIORITY**: If the user asks about their holdings (e.g., "how many", "do I own"), YOU MUST answer that first using the 'User Portfolio Context'.
-        2. Answer the user's question directly.
-        3. Use the data from Tool Outputs to back up your claims.
-        3. If multiple stocks were analyzed, provide a comparison.
-        4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
-        5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
-        6. Do not mention "Knowledge Cutoff".
-7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-        
-        7.  **SCORING RULES (CRITICAL):**
-            - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
-            - Only adjust the score by ±10 points based on recent news from the Researcher.
-            - **TRANSPARENCY RULE**: If you adjust the score, **YOU MUST STATE WHY**.
-            - *Bad Example*: "Score: 68/100" (when raw was 72).
-            - *Good Example*: "Score adjusted from 72 (Consensus) to 68 due to recent negative regulatory news."
-
-        8.  **RECOMMENDATION THRESHOLDS:**
-            - Under 40 → STRONG SELL
-            - 40-50 → WEAK SELL
-            - 50-65 → HOLD
-            - 65-72 → MODERATE BUY
-            - Above 72 → STRONG BUY
-
-            - Output format: "Score: X/100 — RECOMMENDATION"
-
-        **FORMATTING RULES (CRITICAL):**
-        - **USE MARKDOWN TABLES** for any comparison data (Price, Score, P/E, etc.).
-        - **Structure your response** as: 
-            1. **Executive Summary** (Table)
-            2. **Deep Dive** (Bullet points)
-            3. **Verdict** (Conclusion)
-        - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
-        """
+        user_msg = SYNTHESIS_PROMPT.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            query=query,
+            user_context=json.dumps(user_context, indent=2, default=str),
+            plan=json.dumps(plan.dict(), indent=2),
+            tool_outputs=json.dumps(results, indent=2, default=str),
+            mode_instructions=(
+                DIRECT_MODE_INSTRUCTIONS
+                if plan.response_mode == "direct"
+                else COMPREHENSIVE_MODE_INSTRUCTIONS
+            ),
+        )
 
         try:
             response = await llm_service.client.chat.completions.create(
@@ -346,69 +303,27 @@ class AgentEngine:
         user_context: Dict[str, Any] = {},
     ):
         """
-        Streamed synthesis.
+        Streamed synthesis. Shares SYNTHESIS_PROMPT with _generate_recommendation.
         """
         from datetime import datetime
 
-        context_str = json.dumps(results, indent=2, default=str)
-        user_context_str = json.dumps(user_context, indent=2, default=str)
-        plan_str = json.dumps(plan.dict(), indent=2)
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Use simple synthesis based on Main Agent Persona (Same prompt as sync)
         system_prompt = (
             MAIN_AGENT_PROMPT
             + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
         )
 
-        user_msg = f"""
-        Current Date: {current_date}
-        User Query: {query}
-        
-        User Portfolio Context:
-        {user_context_str}
-        
-        Execution Plan:
-        {plan_str}
-        
-        Tool Outputs:
-        {context_str}
-        
-        Instructions:
-        1. **PRIORITY**: If the user asks about their holdings (e.g., "how many", "do I own"), YOU MUST answer that first using the 'User Portfolio Context'.
-        2. Answer the user's question directly.
-        3. Use the data from Tool Outputs to back up your claims.
-        3. If multiple stocks were analyzed, provide a comparison.
-        4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
-        5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
-        6. Do not mention "Knowledge Cutoff".
-        
-        7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-        
-        7.  **SCORING RULES (CRITICAL):**
-            - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
-            - Only adjust the score by ±10 points based on recent news from the Researcher.
-            - **TRANSPARENCY RULE**: If you adjust the score, **YOU MUST STATE WHY**.
-            - *Bad Example*: "Score: 68/100" (when raw was 72).
-            - *Good Example*: "Score adjusted from 72 (Consensus) to 68 due to recent negative regulatory news."
-
-        8.  **RECOMMENDATION THRESHOLDS:**
-            - Under 40 → STRONG SELL
-            - 40-50 → WEAK SELL
-            - 50-65 → HOLD
-            - 65-72 → MODERATE BUY
-            - Above 72 → STRONG BUY
-
-            - Output format: "Score: X/100 — RECOMMENDATION"
-
-        **FORMATTING RULES (CRITICAL):**
-        - **USE MARKDOWN TABLES** for any comparison data (Price, Score, P/E, etc.).
-        - **Structure your response** as: 
-            1. **Executive Summary** (Table)
-            2. **Deep Dive** (Bullet points)
-            3. **Verdict** (Conclusion)
-        - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
-        """
+        user_msg = SYNTHESIS_PROMPT.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            query=query,
+            user_context=json.dumps(user_context, indent=2, default=str),
+            plan=json.dumps(plan.dict(), indent=2),
+            tool_outputs=json.dumps(results, indent=2, default=str),
+            mode_instructions=(
+                DIRECT_MODE_INSTRUCTIONS
+                if plan.response_mode == "direct"
+                else COMPREHENSIVE_MODE_INSTRUCTIONS
+            ),
+        )
 
         try:
             stream = await llm_service.client.chat.completions.create(
