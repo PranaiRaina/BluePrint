@@ -17,7 +17,12 @@ from pydantic import BaseModel, Field
 import json
 from .finnhub_client import finnhub_client
 from .llm_service import llm_service
-from StockAgents.core.prompts import MAIN_AGENT_PROMPT, PLANNER_SYSTEM_PROMPT
+from StockAgents.core.prompts import (
+    COMPREHENSIVE_MODE_INSTRUCTIONS,
+    MAIN_AGENT_PROMPT,
+    PLANNER_SYSTEM_PROMPT,
+    SYNTHESIS_PROMPT,
+)
 
 # System Prompt for the Main Agent (Portfolio Manager)
 
@@ -265,65 +270,19 @@ class AgentEngine:
         """
         from datetime import datetime
 
-        context_str = json.dumps(results, indent=2, default=str)
-        user_context_str = json.dumps(user_context, indent=2, default=str)
-        plan_str = json.dumps(plan.dict(), indent=2)
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Use simple synthesis based on Main Agent Persona
         system_prompt = (
             MAIN_AGENT_PROMPT
             + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
         )
 
-        user_msg = f"""
-        Current Date: {current_date}
-        User Query: {query}
-        
-        User Portfolio Context:
-        {user_context_str}
-        
-        Execution Plan:
-        {plan_str}
-        
-        Tool Outputs:
-        {context_str}
-        
-        Instructions:
-        1. **PRIORITY**: If the user asks about their holdings (e.g., "how many", "do I own"), YOU MUST answer that first using the 'User Portfolio Context'.
-        2. Answer the user's question directly.
-        3. Use the data from Tool Outputs to back up your claims.
-        3. If multiple stocks were analyzed, provide a comparison.
-        4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
-        5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
-        6. Do not mention "Knowledge Cutoff".
-7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-        
-        7.  **SCORING RULES (CRITICAL):**
-            - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
-            - Only adjust the score by ±10 points based on recent news from the Researcher.
-            - **TRANSPARENCY RULE**: If you adjust the score, **YOU MUST STATE WHY**.
-            - *Bad Example*: "Score: 68/100" (when raw was 72).
-            - *Good Example*: "Score adjusted from 72 (Consensus) to 68 due to recent negative regulatory news."
-
-        8.  **RECOMMENDATION THRESHOLDS:**
-            - Under 40 → STRONG SELL
-            - 40-50 → WEAK SELL
-            - 50-65 → HOLD
-            - 65-72 → MODERATE BUY
-            - Above 72 → STRONG BUY
-
-            - Output format: "Score: X/100 — RECOMMENDATION"
-
-        **FORMATTING RULES (CRITICAL):**
-        - **USE MARKDOWN TABLES** for any comparison data (Price, Score, P/E, etc.).
-        - **Structure your response** as: 
-            1. **Executive Summary** (Table)
-            2. **Deep Dive** (Bullet points)
-            3. **Verdict** (Conclusion)
-        - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
-        """
+        user_msg = SYNTHESIS_PROMPT.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            query=query,
+            user_context=json.dumps(user_context, indent=2, default=str),
+            plan=json.dumps(plan.dict(), indent=2),
+            tool_outputs=json.dumps(results, indent=2, default=str),
+            mode_instructions=COMPREHENSIVE_MODE_INSTRUCTIONS,
+        )
 
         try:
             response = await llm_service.client.chat.completions.create(
@@ -346,69 +305,23 @@ class AgentEngine:
         user_context: Dict[str, Any] = {},
     ):
         """
-        Streamed synthesis.
+        Streamed synthesis. Shares SYNTHESIS_PROMPT with _generate_recommendation.
         """
         from datetime import datetime
 
-        context_str = json.dumps(results, indent=2, default=str)
-        user_context_str = json.dumps(user_context, indent=2, default=str)
-        plan_str = json.dumps(plan.dict(), indent=2)
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Use simple synthesis based on Main Agent Persona (Same prompt as sync)
         system_prompt = (
             MAIN_AGENT_PROMPT
             + "\n\nACT AS A SYNTHESIZER. Combine the tool outputs into a coherent response matching the user's intent."
         )
 
-        user_msg = f"""
-        Current Date: {current_date}
-        User Query: {query}
-        
-        User Portfolio Context:
-        {user_context_str}
-        
-        Execution Plan:
-        {plan_str}
-        
-        Tool Outputs:
-        {context_str}
-        
-        Instructions:
-        1. **PRIORITY**: If the user asks about their holdings (e.g., "how many", "do I own"), YOU MUST answer that first using the 'User Portfolio Context'.
-        2. Answer the user's question directly.
-        3. Use the data from Tool Outputs to back up your claims.
-        3. If multiple stocks were analyzed, provide a comparison.
-        4. If a 'quant_analysis' was done, include the Analyst Score and Risk warning.
-        5. EXPLICITLY mention the 'Current Date' provided above when stating prices or status.
-        6. Do not mention "Knowledge Cutoff".
-        
-        7. **CITATIONS**: When referencing news or data, use the links provided in the Tool Outputs to cite your sources inline. Format: `[🔗](url)` or `[[Source]](url)`.
-        
-        7.  **SCORING RULES (CRITICAL):**
-            - **START with the analystConsensusScore** from the Quant report — this is based on 30-50+ Wall Street professionals.
-            - Only adjust the score by ±10 points based on recent news from the Researcher.
-            - **TRANSPARENCY RULE**: If you adjust the score, **YOU MUST STATE WHY**.
-            - *Bad Example*: "Score: 68/100" (when raw was 72).
-            - *Good Example*: "Score adjusted from 72 (Consensus) to 68 due to recent negative regulatory news."
-
-        8.  **RECOMMENDATION THRESHOLDS:**
-            - Under 40 → STRONG SELL
-            - 40-50 → WEAK SELL
-            - 50-65 → HOLD
-            - 65-72 → MODERATE BUY
-            - Above 72 → STRONG BUY
-
-            - Output format: "Score: X/100 — RECOMMENDATION"
-
-        **FORMATTING RULES (CRITICAL):**
-        - **USE MARKDOWN TABLES** for any comparison data (Price, Score, P/E, etc.).
-        - **Structure your response** as: 
-            1. **Executive Summary** (Table)
-            2. **Deep Dive** (Bullet points)
-            3. **Verdict** (Conclusion)
-        - **DO NOT** include a "Disclaimer" or "I am an AI" statement in your text body. This is handled by the user interface globally.
-        """
+        user_msg = SYNTHESIS_PROMPT.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            query=query,
+            user_context=json.dumps(user_context, indent=2, default=str),
+            plan=json.dumps(plan.dict(), indent=2),
+            tool_outputs=json.dumps(results, indent=2, default=str),
+            mode_instructions=COMPREHENSIVE_MODE_INSTRUCTIONS,
+        )
 
         try:
             stream = await llm_service.client.chat.completions.create(
