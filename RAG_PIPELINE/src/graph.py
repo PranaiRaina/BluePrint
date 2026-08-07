@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_tavily import TavilySearch
 from langchain_core.documents import Document
 from .config import settings
+from .doc_metadata import doc_type_label, period_label
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 
@@ -34,6 +35,21 @@ def get_llm():
 
 
 llm = get_llm()
+
+
+def describe_document(doc: Document) -> str:
+    """One line naming the document a chunk came from, for the grader.
+
+    doc_type, issuer and period_ym are metadata-only - they are never embedded -
+    so this is how they reach a model at query time.
+    """
+    meta = doc.metadata or {}
+    parts = [
+        meta.get("issuer") or "",
+        doc_type_label(meta.get("doc_type") or ""),
+        period_label(meta.get("period_ym")),
+    ]
+    return " · ".join(part for part in parts if part) or "Unknown document"
 
 # Tool: Tavily Search
 web_search_tool = None
@@ -158,17 +174,23 @@ def grade_documents(state: GraphState):
         return {"documents": documents, "question": state["question"]}
 
     # Simple grader prompt
-    system = """You are a grader assessing relevance of a retrieved document to a user question. 
-    If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. 
-    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
-    Return only 'yes' or 'no'."""
+    system = """You are a grader assessing relevance of a retrieved chunk to a user question.
+    If the chunk contains keyword(s) or semantic meaning related to the user question, grade it as relevant.
+    Give a binary score 'yes' or 'no' score to indicate whether the chunk is relevant to the question.
+    Return only 'yes' or 'no'.
+
+    Grade the CHUNK, not the source document. The source line is context for
+    disambiguation only - if the question asks about a specific month and the
+    source covers a different one, grade it 'no'."""
 
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system),
             (
                 "human",
-                "Retrieved document: \n\n {document} \n\n User question: {question}",
+                "Source document: {source}\n\n"
+                "Retrieved chunk:\n\n{document}\n\n"
+                "User question: {question}",
             ),
         ]
     )
@@ -180,7 +202,11 @@ def grade_documents(state: GraphState):
     print(f"DEBUG [RAG]: Grading {len(documents)} documents...")
     for doc in documents:
         score = grader_chain.invoke(
-            {"question": question, "document": doc.page_content}
+            {
+                "question": question,
+                "document": doc.page_content,
+                "source": describe_document(doc),
+            }
         )
         print(f"DEBUG [RAG]: Doc from {doc.metadata.get('source')} Grade: {score}")
         if "yes" in score.lower():
