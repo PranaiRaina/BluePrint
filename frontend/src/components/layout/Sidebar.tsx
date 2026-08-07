@@ -34,14 +34,21 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Expose a refresh method or listen to events if needed, but simple prop trigger is easiest
     // For now, we load on mount. 
 
+    // Refs, not deps: depending on `session` (new object on every token refresh) or
+    // `sessions.length` made loadSessions re-identify and re-fire its own effect.
+    const sessionRef = React.useRef(session);
+    sessionRef.current = session;
+    const hasLoadedRef = React.useRef(false);
+
     const loadSessions = React.useCallback(async () => {
-        if (sessions.length === 0) {
+        if (!hasLoadedRef.current) {
             setIsLoading(true);
         }
-        const list = await agentService.getSessions(session);
+        const list = await agentService.getSessions(sessionRef.current);
+        hasLoadedRef.current = true;
         setSessions(list);
         setIsLoading(false);
-    }, [session, sessions.length]);
+    }, []);
 
     // Initial Load
     React.useEffect(() => {

@@ -92,10 +92,9 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                             streamContentRef.current = streamContentRef.current.replace(legalRegex, "");
                         }
 
-                        // Update UI state
-                        if (streamContentRef.current && !hasStreamContent) {
-                            setHasStreamContent(true);
-                        }
+                        // Update UI state (functional: React bails out when unchanged,
+                        // so this doesn't re-render or churn processQuery per token)
+                        setHasStreamContent(prev => prev || !!streamContentRef.current);
                     },
                     onTickers: (tickers) => {
                         if (onTickers) onTickers(tickers);
@@ -163,7 +162,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
             console.error(error);
             setIsLoading(false);
         }
-    }, [session, sessionId, onTickers, onSessionCreated, hasStreamContent]);
+    }, [session, sessionId, onTickers, onSessionCreated]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -172,22 +171,28 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         }
     };
 
+    // Latest values without making them effect dependencies. The history effect
+    // must fire on sessionId ONLY - re-running it on every message/token/token-refresh
+    // refetched history mid-stream and hammered the backend.
+    const sessionRef = useRef(session);
+    sessionRef.current = session;
+    const processQueryRef = useRef(processQuery);
+    processQueryRef.current = processQuery;
+
     useEffect(() => {
         let isStale = false;
 
         const initializeChat = async () => {
+            const session = sessionRef.current;
             if (!session.user.id || !sessionId) return;
 
-            // 1. Only clear and reload if the sessionId has actually changed
+            // Only clear if the sessionId has actually changed
             if (prevSessionIdRef.current !== sessionId) {
                 setMessages([]);
                 prevSessionIdRef.current = sessionId;
-                // If we have an initial query, we'll see its progress soon, so maybe skip big loader
-                if (!initialQuery) {
-                    setIsHistoryLoading(true);
-                }
-            } else if (messages.length === 0 && !initialQuery) {
-                // If same session but empty state, show loader
+            }
+            // If we have an initial query, we'll see its progress soon, so skip the big loader
+            if (!initialQuery) {
                 setIsHistoryLoading(true);
             }
 
@@ -221,10 +226,10 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
                 }
             }
 
-            // 2. Handle Initial Query Auto-Pulse
+            // Handle Initial Query Auto-Pulse
             if (initialQuery && !hasSentInitial.current) {
                 hasSentInitial.current = true;
-                void processQuery(initialQuery);
+                void processQueryRef.current(initialQuery);
             }
         };
 
@@ -233,7 +238,7 @@ const ChatView: React.FC<ChatViewProps> = ({ session, sessionId, initialQuery, o
         return () => {
             isStale = true;
         };
-    }, [sessionId, session, initialQuery, processQuery, messages.length]);
+    }, [sessionId, initialQuery]);
 
     // Initial pulse handled in unified effect above
 

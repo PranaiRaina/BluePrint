@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
 
-from ManagerAgent.database import get_db
+from ManagerAgent.database import get_db, init_pool, pool_wait
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
@@ -32,6 +32,14 @@ from PaperTrader.router import router as paper_trader_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: warm the Postgres pool so the first request doesn't pay ~1.9s
+    # per connection handshake to the Supabase pooler.
+    try:
+        init_pool()
+        await asyncio.to_thread(pool_wait)
+    except Exception as e:
+        print(f"Lifespan Startup Error (Postgres Pool): {e}")
+
     # Startup: Open the LangGraph checkpointer pool
     try:
         from RAG_PIPELINE.src.graph import rag_pool, checkpointer
@@ -185,7 +193,7 @@ def save_chat_pair(user_id: str, session_id: str, user_query: str, agent_respons
          return
 
     try:
-        with get_db() as conn:
+        with get_db() as conn, conn.transaction():
             with conn.cursor() as cursor:
                 # 1. Ensure session exists
                 cursor.execute(
@@ -219,7 +227,7 @@ def save_chat_pair(user_id: str, session_id: str, user_query: str, agent_respons
 def save_chat_entry(user_id: str, session_id: str, role: str, content: str):
     """Fallback for single entries, though save_chat_pair is preferred for turn consistency."""
     try:
-        with get_db() as conn:
+        with get_db() as conn, conn.transaction():
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
@@ -462,7 +470,8 @@ async def chat_stream(request: Request, body: AgentRequest):
             # 1. Retrieve History
             import time
             hist_start = time.perf_counter()
-            history = get_chat_history(user_id, actual_session_id)
+            # to_thread: blocking psycopg here would freeze the loop mid-stream
+            history = await asyncio.to_thread(get_chat_history, user_id, actual_session_id)
             print(f"DEBUG [PERF]: get_chat_history took {(time.perf_counter() - hist_start) * 1000:.2f}ms")
 
             # 2. Analyze Intent
@@ -542,7 +551,7 @@ async def chat_stream(request: Request, body: AgentRequest):
                 # Normal completion save
                 final_text = "".join(full_response_buffer)
                 if final_text:
-                    save_chat_pair(user_id, actual_session_id, body.query, final_text)
+                    await asyncio.to_thread(save_chat_pair, user_id, actual_session_id, body.query, final_text)
                     history_saved = True
                     
             except GeneratorExit:
@@ -551,6 +560,7 @@ async def chat_stream(request: Request, body: AgentRequest):
                 if not history_saved:
                     # Even if no AI text, save the USER query so it doesn't vanish
                     saved_text = final_text if final_text else "..."
+                    # ponytail: stays blocking - you cannot await inside GeneratorExit
                     print(f"DEBUG: Saving response (len={len(saved_text)}) on client disconnect for session {actual_session_id}")
                     save_chat_pair(user_id, actual_session_id, body.query, saved_text)
                     history_saved = True
@@ -646,7 +656,7 @@ async def delete_document(filename: str, user: dict = Depends(get_current_user))
 
 
 @app.get("/v1/agent/documents")
-async def list_documents(user: dict = Depends(get_current_user)):
+def list_documents(user: dict = Depends(get_current_user)):
     """
     List all uploaded documents from Supabase Storage, searching 1 level deep.
     """
@@ -679,9 +689,12 @@ async def list_documents(user: dict = Depends(get_current_user)):
 
 
 @app.get("/v1/agent/history")
-async def get_history(session_id: str, user: dict = Depends(get_current_user)):
+def get_history(session_id: str, user: dict = Depends(get_current_user)):
     """
     Get chat history for a specific session.
+
+    Sync def on purpose: psycopg is blocking, so FastAPI runs this in its
+    threadpool instead of stalling the event loop (and every SSE stream on it).
     """
     import time
     start = time.perf_counter()
@@ -869,7 +882,7 @@ async def get_analyst_ratings(ticker: str, user: dict = Depends(get_current_user
 
 
 @app.get("/v1/agent/sessions")
-async def list_sessions(user: dict = Depends(get_current_user)):
+def list_sessions(user: dict = Depends(get_current_user)):
     """List all chat sessions for the user (Newest first)."""
     user_id = user["sub"]
     try:
@@ -911,7 +924,7 @@ async def list_sessions(user: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/agent/sessions")
-async def create_session(
+def create_session(
     body: CreateSessionRequest, user: dict = Depends(get_current_user)
 ):
     """Create a new chat session."""
@@ -937,7 +950,7 @@ async def create_session(
 
 
 @app.patch("/v1/agent/sessions/{session_id}")
-async def update_session(
+def update_session(
     session_id: str, body: UpdateSessionRequest, user: dict = Depends(get_current_user)
 ):
     """Update a session (rename or update metadata)."""
@@ -976,11 +989,11 @@ async def update_session(
 
 
 @app.delete("/v1/agent/sessions/{session_id}")
-async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
+def delete_session(session_id: str, user: dict = Depends(get_current_user)):
     """Delete a session and its history."""
     user_id = user["sub"]
     try:
-        with get_db() as conn:
+        with get_db() as conn, conn.transaction():
             with conn.cursor() as cursor:
                 # Delete session
                 cursor.execute(
@@ -1003,7 +1016,7 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
 # --- Portfolio endpoints (Supabase Postgres) ---
 
 @app.get("/v1/portfolio/pending")
-async def get_pending_holdings(user: dict = Depends(get_current_user)):
+def get_pending_holdings(user: dict = Depends(get_current_user)):
     """Get pending extracted holdings for the current user."""
     try:
         from ManagerAgent.holdings_db import get_holdings
@@ -1016,7 +1029,7 @@ async def get_pending_holdings(user: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/portfolio/confirm/{item_id}")
-async def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
+def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
     """Confirm a pending holding (move to verified status)."""
     try:
         from ManagerAgent.holdings_db import update_holding_status
@@ -1033,7 +1046,7 @@ async def confirm_holding(item_id: str, user: dict = Depends(get_current_user)):
 
 
 @app.get("/v1/portfolio/holdings")
-async def get_verified_holdings(user: dict = Depends(get_current_user)):
+def get_verified_holdings(user: dict = Depends(get_current_user)):
     """Get verified holdings for the current user."""
     try:
         from ManagerAgent.holdings_db import get_holdings
@@ -1046,7 +1059,7 @@ async def get_verified_holdings(user: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/portfolio/holdings")
-async def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_current_user)):
+def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_current_user)):
     """Add or update a holding for the current user."""
     try:
         from ManagerAgent.holdings_db import upsert_holding
@@ -1063,7 +1076,7 @@ async def add_holding(body: CreateHoldingRequest, user: dict = Depends(get_curre
 
 
 @app.delete("/v1/portfolio/holdings/{ticker}")
-async def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
+def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
     """Delete all holdings for a given ticker for the current user."""
     try:
         from ManagerAgent.holdings_db import delete_holding as db_delete_holding
@@ -1087,7 +1100,7 @@ async def delete_holding(ticker: str, user: dict = Depends(get_current_user)):
 # =============================================================================
 
 @app.get("/v1/user/profile")
-async def get_user_profile(user: dict = Depends(get_current_user)):
+def get_user_profile(user: dict = Depends(get_current_user)):
     """Get the current user's investment profile."""
     user_id = user.get("sub")
     if not user_id:
@@ -1134,7 +1147,7 @@ async def get_user_profile(user: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/user/profile")
-async def update_user_profile(body: UpdateProfileRequest, user: dict = Depends(get_current_user)):
+def update_user_profile(body: UpdateProfileRequest, user: dict = Depends(get_current_user)):
     """Update the current user's investment profile (upsert)."""
     user_id = user.get("sub")
     if not user_id:
@@ -1204,7 +1217,7 @@ async def update_user_profile(body: UpdateProfileRequest, user: dict = Depends(g
 # =============================================================================
 
 @app.get("/v1/reports/{ticker}")
-async def get_report_endpoint(ticker: str, user: dict = Depends(get_current_user)):
+def get_report_endpoint(ticker: str, user: dict = Depends(get_current_user)):
     """Get cached analyst report for a ticker (today's date)."""
     from ManagerAgent.reports_db import get_report
     
