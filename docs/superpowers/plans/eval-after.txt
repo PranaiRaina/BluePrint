@@ -1,15 +1,15 @@
 rank    score  val  question
 ------------------------------------------------------------------------------
-   1   0.7171    y  How much was my rent payment in April 2025?
-   1   0.7199    y  How much was my rent payment in March 2025?
-   1   0.6838    y  What was my credit card payment in March?
-   1   0.6141    y  Did I pay for a gym membership?
-   1   0.7244    y  What was my closing balance at the end of April?
-   1   0.6772    y  How much interest did I earn in April?
-   1   0.6722    y  How much was my cheque deposit in May?
-   1   0.6621    y  How much did I withdraw from the ATM in April?
-   2   0.6321    n  How much did I transfer to my brokerage account in May?
-   1   0.7431    y  What was my salary deposit in May 2025?
+   1   0.7257    n  How much was my rent payment in April 2025?
+   1   0.7279    y  How much was my rent payment in March 2025?
+   1   0.6896    y  What was my credit card payment in March?
+   1   0.6166    y  Did I pay for a gym membership?
+   1   0.7313    y  What was my closing balance at the end of April?
+   1   0.7003    y  How much interest did I earn in April?
+   1   0.6756    y  How much was my cheque deposit in May?
+   1   0.6544    y  How much did I withdraw from the ATM in April?
+   1   0.6459    y  How much did I transfer to my brokerage account in May?
+   1   0.7435    y  What was my salary deposit in May 2025?
 ------------------------------------------------------------------------------
-right document first : 90%
+right document first : 100%
 answer in top chunk  : 90%

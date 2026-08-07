@@ -34,22 +34,62 @@ def _is_table_line(line: str) -> bool:
     return line.lstrip().startswith("|")
 
 
+def _column_count(line: str) -> int:
+    return line.count("|")
+
+
 def _blocks(text: str):
-    """Yield (block_text, is_table) for each run of same-kind lines."""
+    """Yield (block_text, is_table) for each run of same-kind lines.
+
+    A run of table lines ends when a *different* table starts. Documents like
+    brokerage statements stack several tables in a row, and merging them means
+    the second table's rows inherit the first table's header - so a date reads
+    as a Symbol. A confidently mislabelled column is worse than none.
+    """
     lines = text.split("\n")
     if not lines:
         return
 
     current: list[str] = []
     current_is_table = _is_table_line(lines[0])
+    current_columns = _column_count(lines[0]) if current_is_table else 0
+    rows_since_header = 0
 
     for line in lines:
         is_table = _is_table_line(line)
-        # Blank lines never break a run; they belong to whatever surrounds them.
-        if line.strip() and is_table != current_is_table:
+        starts_new_block = False
+        # A delimiter row means the line *above* it is the new table's header,
+        # so the break belongs one line earlier than where we noticed it.
+        carry_header = False
+
+        if line.strip():
+            if is_table != current_is_table:
+                starts_new_block = True
+            elif is_table and current:
+                if _column_count(line) != current_columns:
+                    starts_new_block = True
+                elif DELIMITER_RE.match(line.strip()) and rows_since_header > 1:
+                    starts_new_block = True
+                    carry_header = True
+
+        if starts_new_block:
+            carried: list[str] = []
+            if carry_header:
+                while current and not current[-1].strip():
+                    current.pop()
+                if current:
+                    carried = [current.pop()]
             yield "\n".join(current), current_is_table
-            current, current_is_table = [], is_table
+            current, current_is_table = carried, is_table
+            current_columns = (
+                _column_count(carried[0]) if carried else
+                (_column_count(line) if is_table else 0)
+            )
+            rows_since_header = len(carried)
+
         current.append(line)
+        if line.strip() and is_table:
+            rows_since_header += 1
 
     if current:
         yield "\n".join(current), current_is_table

@@ -79,3 +79,81 @@ def test_a_heading_is_attached_to_the_content_it_introduces():
     chunks = split_markdown(TABLE_MD, chunk_size=200)
     assert chunks[0].startswith("## Transactions")
     assert "| Date | Description | Amount | Balance |" in chunks[0]
+
+
+TWO_TABLES = """| Symbol | Shares | Cost Basis | Market Value |
+|---|---|---|---|
+""" + "\n".join(
+    f"| TICK{i} | {i*10} | {i*100}.00 | {i*120}.00 |" for i in range(1, 26)
+) + """
+
+| Date | Activity | Amount |
+|---|---|---|
+""" + "\n".join(
+    f"| 05/{i:02d}/2025 | Dividend TICK{i} | {i}.50 |" for i in range(1, 21)
+)
+
+
+def test_adjacent_tables_do_not_share_a_header():
+    """A brokerage statement stacks several different tables in a row.
+
+    Merging them means the second table's rows get stamped with the first
+    table's header, so a date reads as a Symbol. Confidently mislabelled is
+    worse than unlabelled.
+    """
+    for chunk in split_markdown(TWO_TABLES, chunk_size=300):
+        has_holdings_header = "| Symbol | Shares | Cost Basis | Market Value |" in chunk
+        has_dividend_row = "| Dividend TICK" in chunk
+        assert not (has_holdings_header and has_dividend_row), (
+            "dividend rows carried the holdings header:\n" + chunk[:300]
+        )
+
+
+def test_each_table_keeps_its_own_header():
+    chunks = split_markdown(TWO_TABLES, chunk_size=300)
+    for chunk in chunks:
+        if "| TICK1 |" in chunk or "| TICK16 |" in chunk:
+            assert "| Symbol | Shares | Cost Basis | Market Value |" in chunk
+        if "| Dividend TICK" in chunk:
+            assert "| Date | Activity | Amount |" in chunk
+
+
+def test_adjacent_tables_lose_no_rows():
+    chunks = split_markdown(TWO_TABLES, chunk_size=300)
+    for i in range(1, 26):
+        assert any(f"| TICK{i} |" in c for c in chunks), f"lost holding {i}"
+    for i in range(1, 21):
+        assert any(f"Dividend TICK{i} |" in c for c in chunks), f"lost dividend {i}"
+
+
+SAME_WIDTH_TABLES = """| Symbol | Shares | Value |
+|---|---|---|
+| AAPL | 50 | 9000.00 |
+| MSFT | 20 | 8400.00 |
+
+| Date | Activity | Amount |
+|---|---|---|
+| 05/04/2025 | Dividend | 4.50 |
+| 05/11/2025 | Dividend | 6.25 |
+"""
+
+
+def test_same_width_adjacent_tables_are_separated():
+    """Column count cannot tell these apart; the delimiter row is the signal."""
+    chunks = split_markdown(SAME_WIDTH_TABLES, chunk_size=1000)
+    for chunk in chunks:
+        if "Dividend" in chunk:
+            assert "| Date | Activity | Amount |" in chunk
+            assert "| Symbol | Shares | Value |" not in chunk
+        if "AAPL" in chunk:
+            assert "| Symbol | Shares | Value |" in chunk
+
+
+def test_same_width_split_leaves_no_orphan_header():
+    """Breaking at the delimiter instead of the header strands rows unlabelled."""
+    for chunk in split_markdown(SAME_WIDTH_TABLES, chunk_size=1000):
+        stripped = chunk.strip()
+        assert not stripped.startswith("|---|"), f"orphaned delimiter:\n{chunk}"
+        assert not stripped.endswith("| Date | Activity | Amount |"), (
+            f"header orphaned onto previous table:\n{chunk}"
+        )

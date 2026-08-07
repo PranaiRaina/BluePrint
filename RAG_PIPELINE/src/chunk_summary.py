@@ -23,21 +23,32 @@ class ChunkSummaries(BaseModel):
 
 PROMPT = """You are labelling chunks of a financial document so they can be found by search.
 
-Document: {issuer} {doc_type}, covering {period}.
+Document: {issuer} {doc_type}{period_clause}.
 
 Write one summary per chunk below, in the same order, {count} in total.
 
 Rules for each summary:
 - {max_words} words maximum. Every word has to earn its place.
-- MUST state the period "{period}". Search cannot find the right month without it.
-- Then LIST THE LINE ITEMS in that chunk by name: rent, salary, ATM withdrawal,
-  insurance, groceries, car loan, and so on. These are what people search for.
+{period_rule}
+- Name what is actually in that chunk. For statements, list the line items:
+  rent, salary, ATM withdrawal, insurance, groceries, car loan. For prose, name
+  the subjects covered: interest rates, fees, arbitration, cancellation terms.
+  These are what people search for.
 - Do NOT spend words on opening balances, closing balances, or period totals
   unless the chunk contains nothing else. Nobody searches for "opening balance
   4102.65", and those words displace the ones they do search for.
 
 Chunks:
 {chunks}"""
+
+DATED_RULE = (
+    '- MUST state the period "{period}". Search cannot find the right month '
+    "without it."
+)
+UNDATED_RULE = (
+    "- This document covers no period. Do NOT mention a date, month, or period, "
+    "and do not write phrases like 'unstated period'. Start with the subject."
+)
 
 
 def truncate_words(text: str, limit: int = MAX_SUMMARY_WORDS) -> str:
@@ -58,10 +69,15 @@ def fallback_summary(meta: DocumentMetadata) -> str:
 
 def build_batch_prompt(chunks: list[str], meta: DocumentMetadata) -> str:
     numbered = "\n\n".join(f"[{i}]\n{chunk}" for i, chunk in enumerate(chunks, 1))
+    period = period_label(meta.period_ym)
     return PROMPT.format(
         issuer=meta.issuer or "Unknown institution",
         doc_type=doc_type_label(meta.doc_type),
-        period=period_label(meta.period_ym) or "an unstated period",
+        # An undated document must not be told to state a period. Doing so
+        # produced "An unstated period:" on every chunk - byte-identical across
+        # the document, which is exactly the dilution the prefix exists to avoid.
+        period_clause=f", covering {period}" if period else "",
+        period_rule=DATED_RULE.format(period=period) if period else UNDATED_RULE,
         count=len(chunks),
         max_words=MAX_SUMMARY_WORDS,
         chunks=numbered,

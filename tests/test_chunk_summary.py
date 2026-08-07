@@ -64,6 +64,27 @@ def test_batch_prompt_handles_undated_documents():
     assert isinstance(prompt, str) and "chunk one" in prompt
 
 
+def test_undated_prompt_forbids_inventing_a_period():
+    """Telling an undated document to state a period produced 'An unstated
+    period:' on every chunk - identical text, which is the dilution the
+    per-chunk prefix exists to avoid."""
+    prompt = build_batch_prompt(["chunk one"], UNDATED)
+    assert "unstated period" in prompt.lower()
+    assert "do not mention a date" in prompt.lower()
+    assert "MUST state the period" not in prompt
+
+
+def test_dated_prompt_still_requires_the_period():
+    prompt = build_batch_prompt(["chunk one"], META)
+    assert "MUST state the period" in prompt
+    assert "April 2025" in prompt
+
+
+def test_undated_prompt_omits_the_covering_clause():
+    assert "covering" not in build_batch_prompt(["chunk one"], UNDATED)
+    assert "covering April 2025" in build_batch_prompt(["chunk one"], META)
+
+
 def test_chunk_summaries_model_requires_a_list():
     assert ChunkSummaries(summaries=["a", "b"]).summaries == ["a", "b"]
 
