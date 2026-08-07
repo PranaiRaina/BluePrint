@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 from ManagerAgent.api import app
 from Auth.dependencies import get_current_user
+import pytest
+
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 client = TestClient(app)
 

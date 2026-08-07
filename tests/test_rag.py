@@ -1,5 +1,9 @@
 from RAG_PIPELINE.src.ingestion import perform_similarity_search
 from dotenv import load_dotenv
+import pytest
+
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 load_dotenv()
 

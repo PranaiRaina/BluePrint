@@ -5,6 +5,10 @@ import asyncio
 import time
 from CalcAgent.src.agent import financial_agent
 from CalcAgent.src.utils import run_with_retry
+import pytest
+
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 # Define test cases (Query, Expected Keywords/Values)
 # NOTE: Using math-style queries to avoid Wolfram LLM API rate limits on natural language

@@ -3,6 +3,9 @@
 import pytest
 from CalcAgent.config import GOOGLE_API_KEY, WOLFRAM_APP_ID
 
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
+
 # Test queries from the implementation plan
 TEST_QUERIES = [
     # Simple queries (baseline)

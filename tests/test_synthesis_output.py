@@ -4,16 +4,14 @@ Gated behind RUN_LIVE_TESTS because these hit the LLM. Prose varies run to run,
 so the assertions target only structural properties that must always hold.
 """
 
-import os
 import re
 
 import pytest
 
 from StockAgents.services.agent_engine import ExecutionPlan, agent_engine
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("RUN_LIVE_TESTS"), reason="RUN_LIVE_TESTS not set (makes an API call)"
-)
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 TOOL_OUTPUTS = {
     "step_0_get_stock_data": {

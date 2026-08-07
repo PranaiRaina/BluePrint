@@ -24,6 +24,48 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
         # Let's verify the Mock logic from ingestion.py is used if spacy fails
         pass
 
+    def test_remove_pii_financial_identifiers(self):
+        """Test redaction for financial document identifiers."""
+        text = (
+            "Mailing address: 123 Main Street, Riverside, CA 92521. "
+            "Routing number: 021000021. "
+            "Account number: 123456789012. "
+            "Member ID: MBR-1234567. "
+            "Passport number: 123456789. "
+            "Driver license number: D1234567."
+        )
+
+        cleaned = remove_pii(text)
+
+        for sensitive_value in [
+            "123 Main Street",
+            "021000021",
+            "123456789012",
+            "MBR-1234567",
+            "123456789",
+            "D1234567",
+        ]:
+            self.assertNotIn(sensitive_value, cleaned)
+
+    def test_remove_pii_transaction_reference_ids(self):
+        """Test redaction for transaction reference identifiers."""
+        text = (
+            "Zelle Ref ID: ZL123456789. "
+            "Confirmation Number: 8K92LPA7. "
+            "Transaction ID: TXN-948201. "
+            "Trace ID: 1234567890."
+        )
+
+        cleaned = remove_pii(text)
+
+        for sensitive_value in [
+            "ZL123456789",
+            "8K92LPA7",
+            "TXN-948201",
+            "1234567890",
+        ]:
+            self.assertNotIn(sensitive_value, cleaned)
+
     @patch("RAG_PIPELINE.src.ingestion.get_supabase_client")
     @patch("RAG_PIPELINE.src.ingestion.get_vectorstore")
     @patch("RAG_PIPELINE.src.ingestion.PyPDFLoader")

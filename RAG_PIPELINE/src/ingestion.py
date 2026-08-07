@@ -8,13 +8,90 @@ from supabase import create_client
 from .config import settings
 
 # PII Redaction
-from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from presidio_anonymizer import AnonymizerEngine
 
 # Initialize Presidio
 # Initialize Presidio (Lazy Loaded)
 _analyzer = None
 _anonymizer = None
+
+PII_ENTITIES = [
+    "PERSON",
+    "PHONE_NUMBER",
+    "EMAIL_ADDRESS",
+    "US_SSN",
+    "CREDIT_CARD",
+    "LOCATION",
+    "US_BANK_NUMBER",
+    "IBAN_CODE",
+    "US_PASSPORT",
+    "US_DRIVER_LICENSE",
+    "US_ROUTING_NUMBER",
+    "BANK_ACCOUNT_NUMBER",
+    "MEMBER_ID",
+    "US_ADDRESS",
+    "TRANSACTION_REFERENCE_ID",
+]
+
+
+def _register_custom_pii_recognizers(analyzer: AnalyzerEngine) -> None:
+    """Add finance-specific recognizers missing from Presidio's defaults."""
+    recognizers = [
+        PatternRecognizer(
+            supported_entity="US_ROUTING_NUMBER",
+            patterns=[
+                Pattern(
+                    "routing_number_with_label",
+                    r"(?i)\b(?:routing|aba)\s*(?:number|no\.?|#)?\s*[:#-]?\s*\d{9}\b",
+                    0.85,
+                )
+            ],
+        ),
+        PatternRecognizer(
+            supported_entity="BANK_ACCOUNT_NUMBER",
+            patterns=[
+                Pattern(
+                    "account_number_with_label",
+                    r"(?i)\b(?:account|acct)\s*(?:number|no\.?|#)?\s*[:#-]?\s*[A-Z0-9][A-Z0-9 -]{4,24}\b",
+                    0.85,
+                )
+            ],
+        ),
+        PatternRecognizer(
+            supported_entity="MEMBER_ID",
+            patterns=[
+                Pattern(
+                    "member_id_with_label",
+                    r"(?i)\b(?:member|customer|client)\s*(?:id|number|no\.?|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9-]{3,24}\b",
+                    0.85,
+                )
+            ],
+        ),
+        PatternRecognizer(
+            supported_entity="US_ADDRESS",
+            patterns=[
+                Pattern(
+                    "street_address",
+                    r"(?i)\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:street|st\.?|avenue|ave\.?|road|rd\.?|drive|dr\.?|lane|ln\.?|boulevard|blvd\.?|court|ct\.?|circle|cir\.?|way|place|pl\.?)\b(?:,\s*[A-Za-z .'-]+)?(?:,\s*[A-Z]{2})?(?:\s+\d{5}(?:-\d{4})?)?",
+                    0.8,
+                )
+            ],
+        ),
+        PatternRecognizer(
+            supported_entity="TRANSACTION_REFERENCE_ID",
+            patterns=[
+                Pattern(
+                    "transaction_reference_with_label",
+                    r"(?i)\b(?:zelle\s*(?:ref(?:erence)?|transaction)?\s*(?:id|number|no\.?|#)?|(?:transaction|reference|ref|confirmation|confirm|trace)\s*(?:id|number|no\.?|code|#)?)\s*[:#-]?\s*[A-Z0-9][A-Z0-9-]{5,30}\b",
+                    0.85,
+                )
+            ],
+        ),
+    ]
+
+    for recognizer in recognizers:
+        analyzer.registry.add_recognizer(recognizer)
 
 
 def get_analyzer():
@@ -33,6 +110,7 @@ def get_analyzer():
                 models=[{"lang_code": "en", "model_name": "en_core_web_sm"}]
             )
             _analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+            _register_custom_pii_recognizers(_analyzer)
         except Exception as e:
             print(f"Error initializing Presidio Analyzer: {e}")
             # Fallback to a mock/empty analyzer if everything fails, to allow ingestion to proceed
@@ -75,13 +153,7 @@ def remove_pii(text: str) -> str:
             # Analyze
             results = analyzer.analyze(
                 text=block,
-                entities=[
-                    "PERSON",
-                    "PHONE_NUMBER",
-                    "EMAIL_ADDRESS",
-                    "US_SSN",
-                    "CREDIT_CARD",
-                ],
+                entities=PII_ENTITIES,
                 language="en",
             )
             # Anonymize

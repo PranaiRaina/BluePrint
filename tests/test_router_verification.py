@@ -1,6 +1,9 @@
 import pytest
 from ManagerAgent.router_intelligence import classify_intent, IntentType
 
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
+
 # Test cases for router verification
 TEST_CASES = [
     # STOCK

@@ -22,13 +22,6 @@ def override_auth():
     app.dependency_overrides = {}
 
 
-@pytest.fixture(autouse=True)
-def ensure_db():
-    from ManagerAgent.api import init_db
-
-    init_db()
-
-
 # =============================================================================
 # 1. API Integration Tests (Validation, Rate Limits, Health)
 # =============================================================================

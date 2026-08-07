@@ -1,6 +1,10 @@
 import os
 import requests
 from dotenv import load_dotenv
+import pytest
+
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 load_dotenv()
 

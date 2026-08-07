@@ -1,7 +1,5 @@
 """ExecutionPlan.response_mode: how broad an answer the synthesizer writes."""
 
-import os
-
 import pytest
 from pydantic import ValidationError
 
@@ -40,9 +38,7 @@ def test_planner_prompt_documents_response_mode():
     assert '"comprehensive"' in PLANNER_SYSTEM_PROMPT
 
 
-@pytest.mark.skipif(
-    not os.getenv("RUN_LIVE_TESTS"), reason="RUN_LIVE_TESTS not set (makes an API call)"
-)
+@pytest.mark.live
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query,expected",

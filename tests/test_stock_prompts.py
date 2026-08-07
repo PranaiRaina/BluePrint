@@ -5,6 +5,7 @@ the recommendation-threshold machinery we deleted; lowercase rating labels
 ("36 rate it 'buy'") are legitimate reported analyst data and must stay legal.
 """
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -52,8 +53,6 @@ def test_main_agent_prompt_forbids_advising():
     assert "you do not advise" in lowered or "do not advise" in lowered
     assert "portfolio manager" not in lowered
 
-
-import re
 
 # A markdown link wrapped in backticks: `[label](url)
 BACKTICKED_LINK = re.compile(r"`\[[^\]]*\]\(")

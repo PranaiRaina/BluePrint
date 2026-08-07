@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from PaperTrader.TradingAgents.dataflows.alpha_vantage_fundamentals import get_fundamentals
+import pytest
+
+# Every test here calls a real external API. See tests/conftest.py.
+pytestmark = pytest.mark.live
 
 def test_historical_isolation():
     load_dotenv()

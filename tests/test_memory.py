@@ -2,8 +2,8 @@ import pytest
 from Auth.dependencies import get_current_user
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock, MagicMock
-from ManagerAgent.api import app, init_db
-import os
+from ManagerAgent.api import app
+from ManagerAgent.router_intelligence import IntentType, RouterDecision
 
 client = TestClient(app)
 
@@ -13,34 +13,53 @@ app.dependency_overrides[get_current_user] = lambda: {
 }
 
 
-# Ensure fresh DB for tests
 @pytest.fixture(autouse=True)
-def setup_db_and_auth():
-    # Setup DB - Use isolated test DB to protect production history
-    TEST_DB_PATH = "test_chat_history.db"
+def setup_auth():
+    # The SQLite scaffolding this fixture used to do (patching DB_PATH, deleting
+    # a test .db file, calling init_db) died with the Supabase migration -
+    # DB_PATH and init_db no longer exist in ManagerAgent.api.
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "test_user",
+        "email": "test@example.com",
+    }
 
-    # Patch the DB_PATH in the API module
-    with patch("ManagerAgent.api.DB_PATH", TEST_DB_PATH):
-        if os.path.exists(TEST_DB_PATH):
-            os.remove(TEST_DB_PATH)
+    yield
 
-        # Re-init DB with new path
-        init_db()
+    app.dependency_overrides = {}
 
-        # Override Auth
-        from Auth.dependencies import get_current_user
 
-        app.dependency_overrides[get_current_user] = lambda: {
-            "sub": "test_user",
-            "email": "test@example.com",
-        }
+@pytest.fixture(autouse=True)
+def fake_history_store():
+    """In-memory stand-in for the Postgres history layer and the LLM router.
 
+    This test asks one question: does a previous turn reach the agent's prompt?
+    Postgres is only the transport, and the router only picks a branch. Faking
+    both keeps the test offline and deterministic - and it is why the test used
+    to fail, since "test_user" is not a valid Postgres uuid.
+    """
+    turns: list[tuple[str, str]] = []
+
+    def fake_save(user_id, session_id, user_query, agent_response):
+        turns.append(("User", user_query))
+        turns.append(("Agent", agent_response))
+
+    def fake_get(user_id, session_id, limit=10):
+        return "\n".join(f"{role}: {content}" for role, content in turns)
+
+    async def fake_classify(query):
+        return RouterDecision(
+            intents=[IntentType.GENERAL],
+            primary_intent=IntentType.GENERAL,
+            extracted_tickers=[],
+            reasoning="stubbed for test",
+        )
+
+    with (
+        patch("ManagerAgent.api.save_chat_pair", side_effect=fake_save),
+        patch("ManagerAgent.api.get_chat_history", side_effect=fake_get),
+        patch("ManagerAgent.api.classify_intent", side_effect=fake_classify),
+    ):
         yield
-
-        # Cleanup
-        app.dependency_overrides = {}
-        if os.path.exists(TEST_DB_PATH):
-            os.remove(TEST_DB_PATH)
 
 
 @patch("ManagerAgent.api.run_with_retry", new_callable=AsyncMock)
