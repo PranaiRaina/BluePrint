@@ -224,14 +224,30 @@ Producing:
 [Meridian Trust Bank · Bank Statement · May 2025 · Transactions]
 ```
 
-Issuer, type, and period are constant within a document; `header_path` varies per
-chunk. That variation is the point — it restores within-document ranking while
-still giving an isolated table row a semantic anchor.
+**The descriptor comes from dates in the chunk, not the heading path.** Measured
+on all three fixtures, `pymupdf4llm` emits exactly two headings —
+`# MERIDIAN TRUST BANK` and `## STATEMENT OF ACCOUNT` — and
+`MarkdownHeaderTextSplitter` returns 2 sections whose heading path is **identical
+for all content**. A heading-based descriptor would therefore give every chunk of
+a statement the same prefix, reproducing Problem 1 exactly.
 
-At roughly 80 characters it is also about a third of the current prefix's length.
+Dates vary per chunk and are also what date-scoped questions need:
 
-When a document has no headings, `header_path` is empty and the prefix falls back
-to document-level fields plus page number (`· p.3`), which still varies per chunk.
+```
+[Meridian Trust Bank · Bank Statement · May 2025 · 05/01-05/16]
+[Meridian Trust Bank · Bank Statement · May 2025 · 05/19-06/01]
+```
+
+Descriptor precedence: date range from the chunk's own text, else `header_path`
+(which serves document types that do have real headings), else `p.N`.
+
+At roughly 80 characters the prefix is also about a third of the current one's
+length.
+
+Note that with statements measuring 1288–1500 tokens, a document yields only 2
+chunks at 750. Within-document ranking is therefore nearly moot on this corpus —
+the load is carried by the document-level fields, particularly the period, which
+is the only thing separating three months whose rent is 1,650.00 in all of them.
 
 ### Step 5 — Summary moves to metadata, plus one summary chunk
 
