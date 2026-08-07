@@ -28,3 +28,25 @@ def test_to_markdown_preserves_transaction_values():
 def test_all_fixtures_convert(name):
     md = to_markdown(os.path.join(FIXTURES, f"specimen_bank_statement_{name}2025.pdf"))
     assert len(md) > 500
+
+
+def test_emphasis_is_stripped():
+    """Bold markers break spaCy's tokeniser, so PII survives redaction.
+
+    "**Jane Sample**" tokenises as "**Jane" / "Sample**", which NER does not
+    recognise as a person. Stripping emphasis is what lets redaction see it.
+    """
+    md = to_markdown(os.path.join(FIXTURES, "specimen_bank_statement_mar2025.pdf"))
+    assert "**" not in md
+    assert "Jane Sample" in md, "name should be bare, ready for redaction"
+
+
+def test_headings_and_tables_survive_emphasis_stripping():
+    md = to_markdown(MAY)
+    assert any(line.startswith("#") for line in md.splitlines())
+    assert any(line.lstrip().startswith("|") for line in md.splitlines())
+
+
+def test_br_markers_are_stripped():
+    md = to_markdown(MAY)
+    assert "<br>" not in md

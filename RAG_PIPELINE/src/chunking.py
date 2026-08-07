@@ -1,5 +1,6 @@
 """Markdown-aware chunking."""
 
+import os
 import re
 
 import tiktoken
@@ -9,6 +10,10 @@ from langchain_text_splitters import (
 )
 
 MAX_DOCUMENT_TOKENS = 50_000
+
+# Overridable so the eval can compare sizes without editing code.
+DEFAULT_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "750"))
+DEFAULT_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "100"))
 
 # A block shorter than this is not worth its own embedding - a bare "##
 # Transactions" heading answers nothing and occupies a retrieval slot. Such
@@ -76,9 +81,13 @@ def _split_table(block: str, chunk_size: int) -> list[str]:
 
 
 def split_markdown(
-    md: str, chunk_size: int = 750, chunk_overlap: int = 100
+    md: str,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> list[str]:
     """Split markdown into chunks, keeping table headers on every piece."""
+    chunk_size = DEFAULT_CHUNK_SIZE if chunk_size is None else chunk_size
+    chunk_overlap = DEFAULT_CHUNK_OVERLAP if chunk_overlap is None else chunk_overlap
     sections = MarkdownHeaderTextSplitter(
         HEADERS_TO_SPLIT_ON, strip_headers=False
     ).split_text(md)

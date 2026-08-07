@@ -28,10 +28,13 @@ Document: {issuer} {doc_type}, covering {period}.
 Write one summary per chunk below, in the same order, {count} in total.
 
 Rules for each summary:
-- {max_words} words maximum.
+- {max_words} words maximum. Every word has to earn its place.
 - MUST state the period "{period}". Search cannot find the right month without it.
-- Name what is actually in that chunk: the kinds of transactions, the accounts,
-  the figures. Be specific, not generic.
+- Then LIST THE LINE ITEMS in that chunk by name: rent, salary, ATM withdrawal,
+  insurance, groceries, car loan, and so on. These are what people search for.
+- Do NOT spend words on opening balances, closing balances, or period totals
+  unless the chunk contains nothing else. Nobody searches for "opening balance
+  4102.65", and those words displace the ones they do search for.
 
 Chunks:
 {chunks}"""
