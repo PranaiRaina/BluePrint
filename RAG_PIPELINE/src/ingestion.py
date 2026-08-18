@@ -381,7 +381,11 @@ async def process_pdf_scoped(filename: str, file_content: bytes, user_id: str):
             "user_id": user_id,  # CRITICAL: Scoping
             "doc_type": meta.doc_type,
             "issuer": meta.issuer,
-            "period_ym": meta.period_ym,
+            # A range, not a month: a Jan-Mar statement is 202501..202503, so
+            # "does this cover March" is one containment predicate on the jsonb
+            # and works the same for monthly and quarterly documents.
+            "period_start_ym": meta.period_start_ym,
+            "period_end_ym": meta.period_end_ym,
         }
 
         texts = [

@@ -127,7 +127,8 @@ class TestIngestion(unittest.IsolatedAsyncioTestCase):
         mock_metadata.return_value = DocumentMetadata(
             doc_type="bank_statement",
             issuer="Meridian Trust Bank",
-            period_ym=202505,
+            period_start_ym=202505,
+            period_end_ym=202505,
         )
         mock_summaries.return_value = ["May 2025 Meridian checking rent payment."]
         

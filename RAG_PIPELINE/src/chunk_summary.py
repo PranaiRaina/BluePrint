@@ -60,7 +60,7 @@ def truncate_words(text: str, limit: int = MAX_SUMMARY_WORDS) -> str:
 def fallback_summary(meta: DocumentMetadata) -> str:
     """Used when the summary call fails. Must still carry the period."""
     parts = [
-        period_label(meta.period_ym),
+        period_label(meta.period_start_ym, meta.period_end_ym),
         meta.issuer,
         doc_type_label(meta.doc_type) if meta.doc_type else "",
     ]
@@ -70,7 +70,7 @@ def fallback_summary(meta: DocumentMetadata) -> str:
 
 def build_batch_prompt(chunks: list[str], meta: DocumentMetadata) -> str:
     numbered = "\n\n".join(f"[{i}]\n{chunk}" for i, chunk in enumerate(chunks, 1))
-    period = period_label(meta.period_ym)
+    period = period_label(meta.period_start_ym, meta.period_end_ym)
     return PROMPT.format(
         issuer=meta.issuer or "Unknown institution",
         doc_type=doc_type_label(meta.doc_type),

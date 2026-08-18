@@ -11,9 +11,12 @@ from RAG_PIPELINE.src.chunk_summary import (
 from RAG_PIPELINE.src.doc_metadata import DocumentMetadata
 
 META = DocumentMetadata(
-    doc_type="bank_statement", issuer="Meridian Trust Bank", period_ym=202504
+    doc_type="bank_statement",
+    issuer="Meridian Trust Bank",
+    period_start_ym=202504,
+    period_end_ym=202504,
 )
-UNDATED = DocumentMetadata(doc_type="other", issuer="", period_ym=None)
+UNDATED = DocumentMetadata(doc_type="other", issuer="")
 
 
 def test_limits_are_as_specified():

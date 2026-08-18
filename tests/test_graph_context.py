@@ -8,7 +8,8 @@ APR = Document(
         "source": "specimen_bank_statement_apr2025.pdf",
         "doc_type": "bank_statement",
         "issuer": "Meridian Trust Bank",
-        "period_ym": 202504,
+        "period_start_ym": 202504,
+        "period_end_ym": 202504,
     },
 )
 
@@ -29,7 +30,7 @@ def test_describe_document_survives_missing_metadata():
 def test_describe_document_omits_absent_period():
     doc = Document(
         page_content="x",
-        metadata={"doc_type": "receipt", "issuer": "Acme", "period_ym": None},
+        metadata={"doc_type": "receipt", "issuer": "Acme", "period_start_ym": None},
     )
     described = describe_document(doc)
     assert described == "Acme · Receipt"
@@ -41,7 +42,8 @@ def test_describe_document_distinguishes_two_months():
         metadata={
             "doc_type": "bank_statement",
             "issuer": "Meridian Trust Bank",
-            "period_ym": 202503,
+            "period_start_ym": 202503,
+            "period_end_ym": 202503,
         },
     )
     assert describe_document(mar) != describe_document(APR)
