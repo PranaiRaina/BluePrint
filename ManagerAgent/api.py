@@ -19,7 +19,7 @@ from supabase import create_client, Client
 
 from ManagerAgent.database import get_db, init_pool, pool_wait
 from ManagerAgent.router_intelligence import classify_intent, IntentType
-from ManagerAgent.tools import ask_stock_analyst, perform_rag_search
+from ManagerAgent.tools import ask_stock_analyst
 from ManagerAgent.orchestrator import orchestrate, orchestrate_stream
 from ManagerAgent.profile_engine import UserProfile, InvestmentObjective, TaxStatus, distill_profile
 from CalcAgent.src.utils import run_with_retry
@@ -372,7 +372,11 @@ async def calculate(
             # Multi-intent query - use orchestrator
             final_output = await asyncio.wait_for(
                 orchestrate(
-                    body.query, decision.intents, user_id=user_id, history=history
+                    body.query,
+                    decision.intents,
+                    user_id=user_id,
+                    history=history,
+                    session_id=body.session_id,
                 ),
                 timeout=60.0,  # Longer timeout for multi-step
             )
@@ -381,8 +385,14 @@ async def calculate(
             final_output = await ask_stock_analyst(body.query)
 
         elif decision.primary_intent == IntentType.RAG:
-            final_output = await perform_rag_search(
-                body.query, user_id=user_id, session_id=body.session_id
+            # Via the orchestrator so a search that matches nothing falls
+            # through to the general agent instead of ending the turn.
+            final_output = await orchestrate(
+                body.query,
+                decision.intents,
+                user_id=user_id,
+                history=history,
+                session_id=body.session_id,
             )
 
         elif decision.primary_intent == IntentType.CALCULATOR:
@@ -489,7 +499,11 @@ async def chat_stream(request: Request, body: AgentRequest):
                 if len(decision.intents) > 1:
                     # Multi-Intent -> Orchestrator Stream
                     async for chunk in orchestrate_stream(
-                        body.query, decision.intents, user_id, history
+                        body.query,
+                        decision.intents,
+                        user_id,
+                        history,
+                        session_id=body.session_id,
                     ):
                         yield chunk
 
@@ -500,11 +514,16 @@ async def chat_stream(request: Request, body: AgentRequest):
                         yield chunk
 
                 elif decision.primary_intent == IntentType.RAG:
-                    from ManagerAgent.tools import perform_rag_search_stream
-
-                    yield {"type": "status", "content": "Searching documents..."}
-                    async for chunk in perform_rag_search_stream(
-                        body.query, user_id, body.session_id, history=history
+                    # Through the orchestrator rather than straight to the RAG
+                    # tool: when the documents match nothing the turn has to
+                    # carry on to the general agent, and that handoff lives
+                    # there. Single-intent still streams directly.
+                    async for chunk in orchestrate_stream(
+                        body.query,
+                        decision.intents,
+                        user_id,
+                        history,
+                        session_id=body.session_id,
                     ):
                         yield chunk
 

@@ -1,10 +1,17 @@
-"""A stream that dies mid-response must not be presented as a finished answer.
+"""A synthesis that dies mid-response must not be presented as a finished answer.
 
-Observed live: the Gemini connection resets roughly 1 call in 3 from this
-machine. When it happens mid-stream, `async for chunk in stream` simply ends -
-no exception, no finish_reason. Without a check, a reply cut off at 105
-characters is indistinguishable from one that completed, so it was streamed to
-the user mid-sentence and then saved to history that way.
+Measured from this machine: roughly one STREAMING call in three has its SSE
+connection killed part-way through. Going direct to Google with httpx shows the
+truth - a ReadError - but litellm swallows it and ends the iterator reporting
+finish_reason "stop". A reply cut off mid-word was therefore indistinguishable
+from a complete one, and retrying could not help because nothing below reported
+a failure.
+
+So synthesis no longer streams from the model. It requests the whole answer,
+which fails loudly when the connection drops, and replays it to the client in
+chunks. These tests pin that: nothing reaches the user until the text is known
+to be complete, failures retry, and a total failure still returns the findings
+rather than losing them.
 """
 
 from types import SimpleNamespace
@@ -14,99 +21,124 @@ import pytest
 import ManagerAgent.orchestrator as orch
 
 
-def chunk(content=None, finish_reason=None):
-    """Shape litellm/Gemini yields: chunk.choices[0].delta.content / .finish_reason."""
+def response(content):
+    """Shape litellm returns for a non-streaming completion."""
     return SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                delta=SimpleNamespace(content=content), finish_reason=finish_reason
-            )
-        ]
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
     )
 
 
-def fake_stream(chunks):
-    async def _stream():
-        for c in chunks:
-            yield c
-
-    return _stream()
-
-
 def install(monkeypatch, *attempts):
-    """Queue one fake stream per acompletion() call."""
+    """Queue one outcome per acompletion() call; an Exception instance raises."""
     calls = {"n": 0}
 
     async def fake_acompletion(*a, **k):
+        assert not k.get("stream"), "synthesis must not stream from the model"
         i = calls["n"]
         calls["n"] += 1
-        return fake_stream(attempts[i])
+        outcome = attempts[min(i, len(attempts) - 1)]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
     monkeypatch.setattr(orch, "acompletion", fake_acompletion)
     return calls
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch):
+    monkeypatch.setattr(orch, "SYNTHESIS_BACKOFF_SECONDS", 0)
+
+
 async def collect(gen):
-    out = []
-    async for c in gen:
-        out.append(c)
-    return out
+    return [c async for c in gen]
 
 
-COMPLETE = [chunk("Hello "), chunk("world."), chunk(finish_reason="stop")]
-TRUNCATED = [chunk("Hello ")]  # dies mid-stream: no finish_reason, no exception
+DROPPED = ConnectionResetError("[Errno 54] Connection reset by peer")
 
 
 @pytest.mark.asyncio
-async def test_complete_stream_is_passed_through_untouched(monkeypatch):
-    calls = install(monkeypatch, COMPLETE)
+async def test_a_complete_answer_is_replayed_in_full(monkeypatch):
+    calls = install(monkeypatch, response("Hello world."))
 
     events = await collect(orch.synthesize_response_stream("q", {"rag": "r"}))
 
-    assert calls["n"] == 1, "a healthy stream must not be retried"
-    assert [e["content"] for e in events if e["type"] == "token"] == ["Hello ", "world."]
+    assert calls["n"] == 1, "a healthy call must not be retried"
+    assert "".join(e["content"] for e in events if e["type"] == "token") == (
+        "Hello world."
+    )
     assert not any(e["type"] in ("reset", "error") for e in events)
 
 
 @pytest.mark.asyncio
-async def test_truncated_stream_is_retried(monkeypatch):
-    calls = install(monkeypatch, TRUNCATED, COMPLETE)
+async def test_a_long_answer_arrives_in_several_chunks(monkeypatch):
+    """Chunked so the client paints progressively rather than in one block."""
+    text = "x" * (orch.REPLAY_CHUNK_CHARS * 4)
+    install(monkeypatch, response(text))
 
     events = await collect(orch.synthesize_response_stream("q", {"rag": "r"}))
 
-    assert calls["n"] == 2, "a stream ending without finish_reason must be retried"
-    # The partial text was already on screen, so the client is told to clear it
-    # before the retry replays from the top - otherwise the user sees it twice.
-    types = [e["type"] for e in events]
-    assert "reset" in types
-    assert types.index("reset") < len(types) - 1
-    assert "".join(e["content"] for e in events if e["type"] == "token").endswith(
+    tokens = [e for e in events if e["type"] == "token"]
+    assert len(tokens) == 4
+    assert "".join(t["content"] for t in tokens) == text
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_retried(monkeypatch):
+    calls = install(monkeypatch, DROPPED, response("Hello world."))
+
+    events = await collect(orch.synthesize_response_stream("q", {"rag": "r"}))
+
+    assert calls["n"] == 2
+    assert "".join(e["content"] for e in events if e["type"] == "token") == (
         "Hello world."
     )
 
 
 @pytest.mark.asyncio
-async def test_both_attempts_truncated_yields_an_error_not_a_half_answer(monkeypatch):
-    calls = install(monkeypatch, TRUNCATED, TRUNCATED)
+async def test_nothing_is_emitted_before_the_answer_is_known_complete(monkeypatch):
+    """No half answer ever reaches the screen, so no 'reset' is ever needed."""
+    install(monkeypatch, DROPPED, response("Hello world."))
 
     events = await collect(orch.synthesize_response_stream("q", {"rag": "r"}))
 
-    assert calls["n"] == 2, "retry exactly once, not forever"
-    assert events[-1]["type"] == "error", (
-        "after the retry also dies the user must get an error, not a sentence "
-        "that stops mid-word"
-    )
+    assert not any(e["type"] == "reset" for e in events)
 
 
 @pytest.mark.asyncio
-async def test_exception_mid_stream_is_reported_as_an_error_event(monkeypatch):
-    async def boom(*a, **k):
-        raise ConnectionResetError("[Errno 54] Connection reset by peer")
-
-    monkeypatch.setattr(orch, "acompletion", boom)
+async def test_an_empty_response_counts_as_a_failure(monkeypatch):
+    calls = install(monkeypatch, response(""), response("Recovered."))
 
     events = await collect(orch.synthesize_response_stream("q", {"rag": "r"}))
 
+    assert calls["n"] == 2
+    assert "".join(e["content"] for e in events if e["type"] == "token") == "Recovered."
+
+
+@pytest.mark.asyncio
+async def test_total_failure_falls_back_to_the_raw_findings(monkeypatch):
+    """The branches already did their work; losing it to an error is worse."""
+    calls = install(monkeypatch, DROPPED)
+
+    events = await collect(
+        orch.synthesize_response_stream(
+            "q", {"rag": "Your April rent was 1,650.00.", "stock": "AAPL 271.40"}
+        )
+    )
+
+    assert calls["n"] == orch.MAX_STREAM_ATTEMPTS
+    body = "".join(e["content"] for e in events if e["type"] == "token")
+    assert "1,650.00" in body
+    assert "AAPL 271.40" in body
+    assert not any(e["type"] == "error" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_total_failure_with_no_findings_is_an_error_not_a_blank(monkeypatch):
+    install(monkeypatch, DROPPED)
+
+    events = await collect(orch.synthesize_response_stream("q", {}))
+
     assert events[-1]["type"] == "error"
-    # Never emitted as a token - a token becomes the answer body and gets saved.
+    # Never a token: a token becomes the answer body and is saved to history.
     assert not any(e["type"] == "token" for e in events)

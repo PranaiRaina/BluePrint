@@ -14,6 +14,7 @@ from CalcAgent.config.prompts import (
     GENERAL_PROMPT,
 )
 from CalcAgent.tools.wolfram import query_wolfram
+from StockAgents.tools.tavily_tool import tavily_market_search
 
 # =============================================================================
 # Financial Calculator Agent (Sub-Agent)
@@ -35,11 +36,16 @@ financial_agent = Agent(
     model=MODEL,
 )
 
+# The general agent is the only branch with no data source of its own, so it is
+# also where a question lands when the document search found nothing. Without
+# this it answers current-events questions from training data alone.
+web_search_tool = function_tool(tavily_market_search)
+
 general_agent = Agent(
     name="GeneralAgent",
     instructions=GENERAL_PROMPT,
     model=MODEL,
-    tools=[],
+    tools=[web_search_tool],
 )
 
 # =============================================================================

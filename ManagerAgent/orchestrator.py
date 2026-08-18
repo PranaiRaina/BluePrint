@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 from litellm import acompletion
 from ManagerAgent.router_intelligence import IntentType
 from ManagerAgent.tools import perform_rag_search, ask_stock_analyst
+from RAG_PIPELINE.src.graph import reported_no_results
 from ManagerAgent.profile_engine import get_profile_directives
 from ManagerAgent.database import get_db
 from CalcAgent.src.agent import financial_agent, general_agent
@@ -45,9 +46,16 @@ async def run_calculator(query: str, context: Dict[str, Any] = None) -> str:
         return f"Calculator error: {str(e)}"
 
 
-# One retry. At an observed ~1-in-3 drop rate this takes visible failures to
-# roughly 1 in 9; more attempts mostly just make the user wait longer.
+# One retry on top of litellm's own num_retries=3, and unlike the streaming
+# version these actually fire: a dropped non-streaming request raises instead of
+# being reported as a clean finish.
 MAX_STREAM_ATTEMPTS = 2
+SYNTHESIS_BACKOFF_SECONDS = 0.5
+
+# The answer is generated whole, then handed over in pieces so the client paints
+# progressively instead of in one block. Small enough to look continuous, large
+# enough not to make thousands of SSE events out of a long reply.
+REPLAY_CHUNK_CHARS = 24
 
 BRANCH_LABELS = {
     "rag": "FROM THE USER'S OWN UPLOADED DOCUMENTS",
@@ -55,6 +63,29 @@ BRANCH_LABELS = {
     "calculator": "FROM THE CALCULATION ENGINE",
     "general": "FROM GENERAL ANALYSIS",
 }
+
+
+def _continue_without_documents(rag_result: str, intents: List[IntentType]) -> None:
+    """A document search that found nothing must not end the turn.
+
+    Only fires when RAG was the whole turn. That is the case that would
+    otherwise stop at "I couldn't find it" having answered nothing, so the
+    general agent is added to answer from general knowledge and the web
+    instead. When other branches are queued the turn already continues without
+    documents, and bolting GENERAL on would just add a second voice restating
+    what STOCK or CALCULATOR is about to say properly.
+
+    Appends to `intents` while the caller is iterating it, which Python's list
+    iteration picks up. GENERAL is last in ORDER_PRIORITY, so appending also
+    puts it in the right place.
+    """
+    if not reported_no_results(rag_result):
+        return
+    if intents != [IntentType.RAG]:
+        return
+
+    print("[Orchestrator] Documents matched nothing; continuing without them.")
+    intents.append(IntentType.GENERAL)
 
 
 def enrich_query_with_context(query: str, context: Dict[str, Any]) -> str:
@@ -76,9 +107,24 @@ def enrich_query_with_context(query: str, context: Dict[str, Any]) -> str:
     if not parts:
         return query
 
+    # The miss notice has already been streamed to the user verbatim. Without
+    # this the next branch opens by saying the same thing again in its own
+    # words, so the user reads "I couldn't find it" twice before any answer.
+    already_told = ""
+    if reported_no_results(results.get("rag", "")):
+        already_told = (
+            "\nSTOP: the document-search notice above is ALREADY being delivered "
+            "to the user as part of this same answer - it is handled, and it is "
+            "not your job. Do NOT repeat it, reword it, apologise for it, or open "
+            "by saying you lack access to their statements. Your FIRST sentence "
+            "must already be answering the rest of their question. Say nothing "
+            "about the documents at all.\n"
+        )
+
     return (
         f"{chr(10).join(parts)}\n\n"
-        f"User's Question: {query}\n\n"
+        f"User's Question: {query}\n"
+        f"{already_told}\n"
         "IMPORTANT: The findings above were already retrieved for this specific "
         "user. Treat them as data you have access to and answer from them. Do NOT "
         "tell the user you have no access to their financial data, and do NOT ask "
@@ -107,6 +153,12 @@ INSTRUCTIONS:
   the disclaimer completely. Do not mention that any agent lacked access, and do
   not hedge the fact you were given.
 - Never ask the user to upload a document that already appears in the findings.
+- **A DOCUMENT SEARCH THAT FOUND NOTHING IS A FINDING, NOT A DISCLAIMER**: if the
+  document agent reports that it searched and matched nothing, say so and keep its
+  suggestions (check the file is uploaded, ask more specifically). That is the
+  honest answer for the part of the question it covers. The rule above about
+  dropping "cannot access" disclaimers does NOT apply to it - that rule is for an
+  agent wrongly claiming it has no access, not for a search that genuinely missed.
 - **CITATIONS**: cite sources inline as plain markdown links, written exactly like
   this with no backticks: [marketbeat.com](https://www.marketbeat.com/stocks/NASDAQ/NVDA)
   Never wrap a markdown link in backticks - it renders as code and stops working.
@@ -171,54 +223,57 @@ async def synthesize_response(
 async def synthesize_response_stream(
     query: str, results: Dict[str, str], history: str = "", user_directives: str = ""
 ):
-    """Streamed synthesis. Shares ORCHESTRATOR_SYNTHESIS_PROMPT with synthesize_response.
+    """Synthesis, generated whole and then replayed to the client in pieces.
 
-    The upstream connection drops mid-stream often enough to matter. When it
-    does, the `async for` just ends: no exception, no finish_reason. So a reply
-    cut off at 105 characters looks exactly like one that finished. We require
-    finish_reason == "stop" before trusting the output, retry once if we do not
-    get it, and report an error rather than handing back half a sentence.
+    We do NOT stream from the model. Measured from here, roughly one streaming
+    call in three has its SSE connection killed mid-response - httpx raises
+    ReadError - and litellm swallows that and ends the iterator with
+    finish_reason "stop". A reply cut off mid-word is therefore indistinguishable
+    from a finished one, and no amount of retrying helps because nothing below us
+    reports a failure.
+
+    A single request/response does not hide anything: a dropped connection
+    raises, so litellm's own num_retries and the loop below both work. The text
+    is then chunked out so the client still renders progressively. The cost is
+    latency to first token - the whole answer has to exist first - which the
+    status events before this cover.
     """
 
     prompt = _build_synthesis_prompt(query, results, history, user_directives)
 
     for attempt in range(MAX_STREAM_ATTEMPTS):
-        emitted_anything = False
-        finish_reason = None
-
         try:
-            stream = await acompletion(
-            num_retries=3,
+            response = await acompletion(
+                num_retries=3,
                 model="gemini/gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
-                stream=True,
             )
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                if choice.delta.content:
-                    emitted_anything = True
-                    yield {"type": "token", "content": choice.delta.content}
-                    await asyncio.sleep(0)  # Force buffer flush
-                if choice.finish_reason:
-                    finish_reason = choice.finish_reason
+            text = (response.choices[0].message.content or "").strip()
+            if not text:
+                raise ValueError("model returned an empty response")
 
-            if finish_reason == "stop":
-                return
+            # Nothing reached the client until now, so a failed attempt above
+            # needs no "reset" - there is never half an answer on screen.
+            for i in range(0, len(text), REPLAY_CHUNK_CHARS):
+                yield {"type": "token", "content": text[i : i + REPLAY_CHUNK_CHARS]}
+                await asyncio.sleep(0)  # Force buffer flush
+            return
 
-            reason = f"stream ended with finish_reason={finish_reason!r}"
         except Exception as e:
             reason = f"{type(e).__name__}: {e}"
 
-        print(f"[Synthesis] attempt {attempt + 1} incomplete - {reason}")
+        print(f"[Synthesis] attempt {attempt + 1} failed - {reason}")
 
         if attempt + 1 < MAX_STREAM_ATTEMPTS:
-            if emitted_anything:
-                # Partial text is already on the user's screen; the retry replays
-                # from the top, so tell the client to clear it first.
-                yield {"type": "reset", "content": ""}
+            await asyncio.sleep(SYNTHESIS_BACKOFF_SECONDS * (2**attempt))
             continue
+
+        # Every attempt failed, but the branch findings are still in hand -
+        # returning them unpolished beats losing the work to an error banner.
+        salvaged = "\n\n".join(text for text in results.values() if text)
+        if salvaged:
+            yield {"type": "token", "content": salvaged}
+            return
 
         yield {
             "type": "error",
@@ -234,6 +289,7 @@ async def orchestrate(
     intents: List[IntentType],
     user_id: str = "fallback-user-id",
     history: str = "",
+    session_id: str = "default",
 ) -> str:
     """
     Execute multiple intents in order, passing context between them,
@@ -261,8 +317,16 @@ async def orchestrate(
 
     for intent in intents:
         if intent == IntentType.RAG:
-            result = await perform_rag_search(query, user_id=user_id, history=history)
+            result, rag_footer = await perform_rag_search(
+                query,
+                user_id=user_id,
+                session_id=session_id,
+                history=history,
+                return_footer=True,
+            )
             context["results"]["rag"] = result
+            context["footer"] = rag_footer
+            _continue_without_documents(result, intents)
 
         elif intent == IntentType.STOCK:
             enriched_query = enrich_query_with_context(query, context)
@@ -287,10 +351,18 @@ async def orchestrate(
             result = await run_with_retry(general_agent, enriched_query)
             context["results"]["general"] = result.final_output
 
+    # Mirrors should_direct_stream in orchestrate_stream: a lone branch already
+    # produced a chat-ready answer, so synthesising it only costs a model call
+    # and a rewording. A RAG miss lands here with two results, not one.
+    if len(context["results"]) == 1:
+        return next(iter(context["results"].values())) + context.get("footer", "")
+
     final_response = await synthesize_response(
         query, context["results"], history=history, user_directives=""  # Non-stream path - directives not fetched
     )
-    return final_response
+    # After synthesis, never before: the synthesiser rewrites what it is given
+    # and drops a coverage line every time.
+    return final_response + context.get("footer", "")
 
 
 async def orchestrate_stream(
@@ -298,6 +370,7 @@ async def orchestrate_stream(
     intents: List[IntentType],
     user_id: str = "fallback-user-id",
     history: str = "",
+    session_id: str = "default",
 ):
     """
     Streamed version of orchestrate with 'Status for Agents, Tokens for Synthesis'.
@@ -336,7 +409,9 @@ async def orchestrate_stream(
                 from ManagerAgent.tools import perform_rag_search_stream
 
                 full_rag_response = []
-                async for chunk in perform_rag_search_stream(query, user_id=user_id, history=history):
+                async for chunk in perform_rag_search_stream(
+                    query, user_id=user_id, session_id=session_id, history=history
+                ):
                     if chunk["type"] == "status":
                         yield chunk
                     elif chunk["type"] == "error":
@@ -344,12 +419,19 @@ async def orchestrate_stream(
                         # half-finished search be synthesised into a confident answer.
                         yield chunk
                         return
+                    elif chunk["type"] == "footer":
+                        # Held back, not streamed with the body. On a
+                        # synthesised turn it must land after the synthesiser
+                        # has finished, or it gets rewritten away.
+                        context["footer"] = chunk["content"]
                     elif chunk["type"] == "token":
                         full_rag_response.append(chunk["content"])
                         if should_direct_stream:  # RAG is answering directly
                             yield chunk
 
-                context["results"]["rag"] = "".join(full_rag_response)
+                rag_text = "".join(full_rag_response)
+                context["results"]["rag"] = rag_text
+                _continue_without_documents(rag_text, intents)
 
             elif intent == IntentType.STOCK:
                 yield {"type": "status", "content": "Running stock analysis..."}
@@ -439,6 +521,11 @@ async def orchestrate_stream(
                 query, context["results"], history=history, user_directives=user_directives
             ):
                 yield chunk
+
+        # Last, on both paths: what the document search actually covered. It is
+        # a fact about the search, not prose for a model to reword.
+        if context.get("footer"):
+            yield {"type": "token", "content": context["footer"]}
 
     except GeneratorExit:
         # Handle disconnection/cancellation

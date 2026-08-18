@@ -217,10 +217,23 @@ def get_vectorstore():
         query_name="match_documents"
     )
 
-def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: float = 0.5):
+def perform_similarity_search(
+    query: str,
+    user_id: str,
+    k: int = 5,
+    threshold: float = 0.5,
+    period_from: int | None = None,
+    period_to: int | None = None,
+):
     """
     Perform similarity search using direct RPC call to Supabase.
     Bypasses LangChain wrapper to avoid SDK compatibility issues.
+
+    period_from/period_to are YYYYMM bounds. When both are None there is NO date
+    predicate at all - the original RPC is called unchanged - because most
+    questions name no period and a filter they did not ask for can only lose
+    documents. When a range is given, documents overlapping it match, and
+    undated documents stay eligible either way.
     """
     try:
         embeddings = GoogleGenerativeAIEmbeddings(
@@ -239,8 +252,15 @@ def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: f
             "match_count": k,
             "filter": {"user_id": user_id} if user_id else {}
         }
-        
-        response = client.rpc("match_documents", params).execute()
+
+        if period_from is None and period_to is None:
+            rpc_name = "match_documents"
+        else:
+            rpc_name = "match_documents_ranged"
+            params["period_from"] = period_from
+            params["period_to"] = period_to
+
+        response = client.rpc(rpc_name, params).execute()
         
         from langchain_core.documents import Document
         
@@ -261,6 +281,45 @@ def perform_similarity_search(query: str, user_id: str, k: int = 5, threshold: f
     except Exception as e:
         print(f"Error in similarity search: {e}")
         return []
+
+
+def count_chunks_in_range(
+    user_id: str, period_from: int | None = None, period_to: int | None = None
+) -> tuple[int, int]:
+    """(chunks eligible for this range, chunks the user has in total).
+
+    Cheap metadata-only query, no embedding. Two jobs: it says whether the
+    answer was truncated - `k` chunks out of how many could have matched - and
+    it is how the reply states what it actually looked at. Both need the same
+    number, so it is fetched once.
+    """
+    try:
+        client = get_supabase_client()
+        rows = (
+            client.table("documents")
+            .select("metadata")
+            .contains("metadata", {"user_id": user_id})
+            .execute()
+            .data
+        )
+    except Exception as e:
+        print(f"DEBUG [RAG]: chunk count failed: {e}")
+        return (0, 0)
+
+    if period_from is None and period_to is None:
+        return (len(rows), len(rows))
+
+    lo = period_from if period_from is not None else 1
+    hi = period_to if period_to is not None else 999912
+
+    eligible = 0
+    for row in rows:
+        meta = row.get("metadata") or {}
+        start, end = meta.get("period_start_ym"), meta.get("period_end_ym")
+        # Undated is timeless, never out of range - same rule as the SQL.
+        if start is None or end is None or (start <= hi and end >= lo):
+            eligible += 1
+    return (eligible, len(rows))
 
 
 async def extract_holdings_from_text(text: str) -> list:

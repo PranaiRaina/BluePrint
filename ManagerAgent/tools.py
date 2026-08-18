@@ -1,11 +1,18 @@
-from RAG_PIPELINE.src.graph import app_graph
+from RAG_PIPELINE.src.graph import (
+    app_graph,
+    coverage_footer,
+    NO_RESULTS_MESSAGE,
+)
 import asyncio
-import os
 
 
 async def perform_rag_search(
-    query: str, user_id: str = "fallback-user-id", session_id: str = "default", history: str = ""
-) -> str:
+    query: str,
+    user_id: str = "fallback-user-id",
+    session_id: str = "default",
+    history: str = "",
+    return_footer: bool = False,
+) -> str | tuple[str, str]:
     """
     Search connected documents for answers using the RAG pipeline.
 
@@ -28,11 +35,18 @@ async def perform_rag_search(
         # Extract the generation
         answer = result.get("generation")
         if not answer:
-            return "Analysis complete, but no direct answer was generated."
+            answer = "Analysis complete, but no direct answer was generated."
+            return (answer, "") if return_footer else answer
 
-        return answer
+        # The footer is kept separate for callers that synthesise: fed through a
+        # synthesiser it gets rewritten away, so it has to be re-attached last.
+        footer = coverage_footer(
+            result.get("coverage"), result.get("documents") or []
+        )
+        return (answer, footer) if return_footer else answer + footer
     except Exception as e:
-        return f"Error performing RAG search: {str(e)}"
+        message = f"Error performing RAG search: {str(e)}"
+        return (message, "") if return_footer else message
 
 
 async def perform_rag_search_stream(
@@ -67,25 +81,27 @@ async def perform_rag_search_stream(
                         await asyncio.sleep(0)
 
             elif kind == "on_chain_end":
-                # Capture citations when the 'generate' node finishes
+                # The no_results node writes a fixed string instead of calling a
+                # model, so it produces no on_chat_model_stream events. Without
+                # this the search would simply end silently.
+                if event.get("name") == "no_results":
+                    # Trailing break: another branch usually continues straight
+                    # after this, and without it the two run together mid-line.
+                    yield {"type": "token", "content": NO_RESULTS_MESSAGE + "\n\n"}
+
+                # Citations and search coverage, when 'generate' finishes.
                 if event.get("name") == "generate":
                     output = event.get("data", {}).get("output", {})
                     docs = output.get("documents", [])
                     if docs:
-                        # Format unique sources
-                        sources = set()
-                        for d in docs:
-                            source = d.metadata.get("source", "Unknown")
-                            if source != "Tavily Search": 
-                                sources.add(os.path.basename(str(source)))
-                            else:
-                                sources.add("Web Search")
-
-                        if sources:
-                            source_msg = (
-                                f"\n\n*Sources: {', '.join(sorted(list(sources)))}*"
-                            )
-                            yield {"type": "token", "content": source_msg}
+                        footer = coverage_footer(output.get("coverage"), docs)
+                        if footer:
+                            # Its own type, not a token. A token is buffered
+                            # into the branch result and handed to the
+                            # synthesiser, which rewrites it and drops this
+                            # every time. The caller re-emits it after
+                            # synthesis instead.
+                            yield {"type": "footer", "content": footer}
 
             elif kind == "on_tool_start":
                 # Yield status for internal RAG tool usage
