@@ -38,6 +38,24 @@ PII_ENTITIES = [
 ]
 
 
+# Every label-based recognizer below matches a keyword followed by a value.
+# Without this the value part happily matches an ordinary English word, so
+# "account" in a sentence swallows whatever follows it: "may treat the account
+# as their own" redacted down to "may treat the <BANK_ACCOUNT_NUMBER>."
+# Statements survived that because "account" there is followed by a number;
+# agreements, KYC records and disclosures use the word in prose and were gutted.
+#
+# An identifier contains a digit. A word does not. Requiring one before the
+# value is consumed is what separates them, and the value class excludes spaces
+# so a match cannot run across words in the first place.
+#
+# The digit rule alone still ate short tokens sitting right after the label:
+# "your account 401k contributions" and "the account 2024 forward" both look
+# like identifiers to it. Real account, member and reference numbers run 7+
+# characters, so the length floor drops those without touching anything real.
+_ID_VALUE = r"(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]{6,24}\b"
+
+
 def _register_custom_pii_recognizers(analyzer: AnalyzerEngine) -> None:
     """Add finance-specific recognizers missing from Presidio's defaults."""
     recognizers = [
@@ -56,7 +74,8 @@ def _register_custom_pii_recognizers(analyzer: AnalyzerEngine) -> None:
             patterns=[
                 Pattern(
                     "account_number_with_label",
-                    r"(?i)\b(?:account|acct)\s*(?:number|no\.?|#)?\s*[:#-]?\s*[A-Z0-9][A-Z0-9 -]{4,24}\b",
+                    r"(?i)\b(?:account|acct)\.?\s*(?:number|no\.?|#)?\s*[:#-]?\s*"
+                    + _ID_VALUE,
                     0.85,
                 )
             ],
@@ -66,7 +85,8 @@ def _register_custom_pii_recognizers(analyzer: AnalyzerEngine) -> None:
             patterns=[
                 Pattern(
                     "member_id_with_label",
-                    r"(?i)\b(?:member|customer|client)\s*(?:id|number|no\.?|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9-]{3,24}\b",
+                    r"(?i)\b(?:member|customer|client)\s*(?:id|number|no\.?|#)\s*"
+                    r"[:#-]?\s*" + _ID_VALUE,
                     0.85,
                 )
             ],
@@ -86,7 +106,10 @@ def _register_custom_pii_recognizers(analyzer: AnalyzerEngine) -> None:
             patterns=[
                 Pattern(
                     "transaction_reference_with_label",
-                    r"(?i)\b(?:zelle\s*(?:ref(?:erence)?|transaction)?\s*(?:id|number|no\.?|#)?|(?:transaction|reference|ref|confirmation|confirm|trace)\s*(?:id|number|no\.?|code|#)?)\s*[:#-]?\s*[A-Z0-9][A-Z0-9-]{5,30}\b",
+                    r"(?i)\b(?:zelle\s*(?:ref(?:erence)?|transaction)?\s*"
+                    r"(?:id|number|no\.?|#)?|(?:transaction|reference|ref|"
+                    r"confirmation|confirm|trace)\s*(?:id|number|no\.?|code|#)?)"
+                    r"\s*[:#-]?\s*" + _ID_VALUE,
                     0.85,
                 )
             ],
